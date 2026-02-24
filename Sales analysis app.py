@@ -376,25 +376,14 @@ def render_waterfall(total_base, qty_v, price_v, fx_v, total_curr, base_label, c
     import plotly.graph_objects as go
 
     # ── 색상 팔레트 ──────────────────────────────────────────────────────────
-    CLR_BASE  = "#2d5faa"      # 기준매출 - 짙은 파랑
-    CLR_CURR  = "#1a7a4a"      # 실적매출 - 짙은 녹색
-    CLR_UP    = "#27ae60"      # 증가 - 선명한 녹
-    CLR_DOWN  = "#e74c3c"      # 감소 - 선명한 적
-    CLR_CONN  = "#bdc3c7"      # 연결선
+    CLR_BASE = "#2d5faa"   # 기준매출 - 짙은 파랑
+    CLR_CURR = "#1a7a4a"   # 실적매출 - 짙은 녹색
+    CLR_UP   = "#27ae60"   # 증가 - 선명한 녹
+    CLR_DOWN = "#e74c3c"   # 감소 - 선명한 적
+    CLR_CONN = "#bdc3c7"   # 연결선
 
-    # ── 각 bar 색상 결정 ─────────────────────────────────────────────────────
-    def bar_color(v, is_total=False, is_base=False):
-        if is_base:   return CLR_BASE
-        if is_total:  return CLR_CURR
+    def bar_color(v):
         return CLR_UP if v >= 0 else CLR_DOWN
-
-    # ── 레이블 텍스트 ─────────────────────────────────────────────────────────
-    def fmt_label(v, is_total=False, is_base=False):
-        if is_base or is_total:
-            return f"<b>{v:,.0f}</b>"
-        sign = "▲ +" if v > 0 else ("▼ " if v < 0 else "")
-        color = CLR_UP if v >= 0 else CLR_DOWN
-        return f"<b><span style='color:{color}'>{sign}{v:,.0f}</span></b>"
 
     x_labels = [
         f"<b>기준 매출</b><br><sub>({base_label})</sub>",
@@ -403,81 +392,108 @@ def render_waterfall(total_base, qty_v, price_v, fx_v, total_curr, base_label, c
         "<b>③ 환율 차이</b>",
         f"<b>실적 매출</b><br><sub>({curr_label})</sub>",
     ]
-    y_vals    = [total_base, qty_v, price_v, fx_v, 0]
-    measures  = ["absolute", "relative", "relative", "relative", "total"]
-    bar_clrs  = [CLR_BASE, bar_color(qty_v), bar_color(price_v), bar_color(fx_v), CLR_CURR]
+
+    # ── 텍스트 레이블 ─────────────────────────────────────────────────────────
+    def fmt_diff(v):
+        if v > 0:  return f"▲ +{v:,.0f}"
+        if v < 0:  return f"▼ {v:,.0f}"
+        return f"{v:,.0f}"
 
     text_labels = [
-        f"<b>{total_base:,.0f}</b>",
-        fmt_label(qty_v),
-        fmt_label(price_v),
-        fmt_label(fx_v),
-        f"<b>{total_curr:,.0f}</b>",
+        f"{total_base:,.0f}",
+        fmt_diff(qty_v),
+        fmt_diff(price_v),
+        fmt_diff(fx_v),
+        f"{total_curr:,.0f}",
     ]
 
-    fig = go.Figure(go.Waterfall(
-        orientation   = "v",
-        measure       = measures,
-        x             = x_labels,
-        y             = y_vals,
-        text          = text_labels,
-        textposition  = "outside",
-        textfont      = dict(size=13, family="Malgun Gothic, AppleGothic, sans-serif"),
-        connector     = dict(line=dict(color=CLR_CONN, width=1.5, dash="dot")),
-        increasing    = dict(marker=dict(color=CLR_UP,   line=dict(color="#1e8449", width=1.2))),
-        decreasing    = dict(marker=dict(color=CLR_DOWN, line=dict(color="#b03a2e", width=1.2))),
-        totals        = dict(marker=dict(color=CLR_CURR, line=dict(color="#145a32", width=1.2))),
-    ))
+    # ── Waterfall: 색상은 increasing/decreasing/totals 으로만 제어 ───────────
+    # 기준매출(absolute)은 increasing으로 분류되므로 CLR_BASE 로 override 불가
+    # → 대신 Go.Bar 5개를 직접 쌓아 완전한 색상 제어를 구현
+    # running 합산으로 base 계산
+    running = [0, total_base, total_base + qty_v, total_base + qty_v + price_v]
+    bar_vals = [total_base, qty_v, price_v, fx_v, total_curr]
+    bar_bases= [0, running[1], running[2], running[3], 0]
+    bar_clrs = [CLR_BASE, bar_color(qty_v), bar_color(price_v), bar_color(fx_v), CLR_CURR]
+    line_clrs= ["#1e4080", "#1e8449" if qty_v>=0 else "#b03a2e",
+                "#1e8449" if price_v>=0 else "#b03a2e",
+                "#1e8449" if fx_v>=0 else "#b03a2e", "#145a32"]
 
-    # 기준매출 bar 색상 덮어쓰기 (absolute는 increasing으로 인식되므로 별도 지정)
-    fig.data[0].marker.color = bar_clrs
+    fig = go.Figure()
 
-    # 차이 합계를 subtitle로 계산
+    for i, (x, y, base, clr, lclr, txt) in enumerate(
+        zip(x_labels, bar_vals, bar_bases, bar_clrs, line_clrs, text_labels)
+    ):
+        # 실적매출(마지막)은 0부터 시작
+        b = 0 if i == 4 else base
+        fig.add_trace(go.Bar(
+            name        = "",
+            x           = [x],
+            y           = [y],
+            base        = [b],
+            marker_color= clr,
+            marker_line = dict(color=lclr, width=1.5),
+            text        = [txt],
+            textposition= "outside",
+            textfont    = dict(
+                size   = 13,
+                color  = "#0d1f3c",
+                family = "Malgun Gothic, AppleGothic, sans-serif",
+            ),
+            showlegend  = False,
+            width       = 0.55,
+        ))
+
+    # 연결 점선 (기준→①→②→③→실적)
+    connector_y = [total_base, total_base + qty_v, total_base + qty_v + price_v,
+                   total_base + qty_v + price_v + fx_v]
+    for i, cy in enumerate(connector_y):
+        fig.add_shape(
+            type  = "line",
+            x0    = i + 0.28, x1 = i + 0.72,
+            y0    = cy, y1 = cy,
+            line  = dict(color=CLR_CONN, width=1.5, dash="dot"),
+        )
+
+    # 총차이 subtitle 계산
     diff_val  = total_curr - total_base
     diff_sign = "▲ +" if diff_val >= 0 else "▼ "
-    diff_pct  = f"({diff_val/total_base*100:+.1f}%)" if total_base != 0 else ""
+    diff_pct  = f"({diff_val / total_base * 100:+.1f}%)" if total_base != 0 else ""
+    diff_color= "#1a7a4a" if diff_val >= 0 else "#e74c3c"
 
     fig.update_layout(
-        title=dict(
+        title = dict(
             text=(f"<b>매출 차이 분석 Waterfall</b>"
-                  f"<br><sup style='color:#555'>{base_label} → {curr_label} &nbsp;│&nbsp; "
-                  f"총차이: {diff_sign}{diff_val:,.0f}원 {diff_pct}</sup>"),
-            font=dict(size=15, color="#0d1f3c"),
-            x=0.01, xanchor="left",
+                  f"<br><sup style='color:#555'>{base_label} → {curr_label}"
+                  f" &nbsp;│&nbsp; 총차이: "
+                  f"<span style='color:{diff_color}'><b>{diff_sign}{diff_val:,.0f}원</b></span>"
+                  f" {diff_pct}</sup>"),
+            font      = dict(size=15, color="#0d1f3c"),
+            x         = 0.01,
+            xanchor   = "left",
         ),
-        height      = 480,
-        margin      = dict(t=80, b=60, l=60, r=60),
-        yaxis       = dict(
-            title       = "원화 매출 (₩)",
-            titlefont   = dict(size=12, color="#3a4a65"),
-            tickfont    = dict(size=11, color="#3a4a65"),
-            gridcolor   = "#e8ecf3",
-            gridwidth   = 1,
-            zeroline    = True,
+        barmode       = "stack",
+        height        = 500,
+        margin        = dict(t=90, b=60, l=60, r=60),
+        yaxis         = dict(
+            title     = "원화 매출 (₩)",
+            titlefont = dict(size=12, color="#3a4a65"),
+            tickfont  = dict(size=11, color="#3a4a65"),
+            gridcolor = "#e8ecf3",
+            gridwidth = 1,
+            zeroline  = True,
             zerolinecolor = "#8a95a8",
             zerolinewidth = 1.5,
         ),
-        xaxis       = dict(
-            tickfont    = dict(size=12, color="#0d1f3c"),
-            tickangle   = 0,
+        xaxis         = dict(
+            tickfont  = dict(size=12, color="#0d1f3c"),
+            tickangle = 0,
         ),
         plot_bgcolor  = "#fafbfd",
         paper_bgcolor = "#ffffff",
         font          = dict(family="Malgun Gothic, AppleGothic, sans-serif"),
         showlegend    = False,
     )
-
-    # 기준/실적 금액 annotation (bar 내부)
-    for i, (lbl, val) in enumerate([(base_label, total_base), (curr_label, total_curr)]):
-        x_pos = 0 if i == 0 else 4
-        fig.add_annotation(
-            x=x_pos, y=val / 2,
-            text=f"<b>{val:,.0f}</b>",
-            showarrow=False,
-            font=dict(size=11, color="white", family="Malgun Gothic, AppleGothic, sans-serif"),
-            xanchor="center", yanchor="middle",
-        )
-
     return fig
 
 

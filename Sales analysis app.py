@@ -129,13 +129,25 @@ def load_excel(file_bytes, file_name):
 
 
 def variance_analysis(base, curr):
-    """품목명 기준 차이 분석"""
+    """
+    품목명 기준 차이 분석 — 수량 차이 우선 분석 모델 (Quantity-First)
+
+    분해 순서:
+      ① 수량 차이  : (Q1 - Q0) × P0 × ER0   ← 단가·환율 모두 기준 고정
+      ② 단가 차이  : (P1 - P0) × Q1 × ER0   ← 수량은 실적, 환율은 기준
+      ③ 환율 차이  : (ER1 - ER0) × Q1 × P1  ← 수량·단가 모두 실적
+
+    검증: ①+②+③ = 총차이 (실적매출 - 기준매출)
+
+    KRW 거래: 환율 = 1 고정, 단가 = 원화단가 사용
+    """
     group_cols = ["품목명"]
 
     def agg(df):
         if df.empty:
             return pd.DataFrame(columns=["품목명", "Q", "P", "ER", "원화매출"])
         g = df.copy()
+        # KRW 거래는 환율=1, 단가=원화단가
         g["환율_adj"] = g.apply(
             lambda r: 1.0 if str(r["환종"]).strip().upper() == "KRW" else float(r["환율"]), axis=1
         )
@@ -144,6 +156,7 @@ def variance_analysis(base, curr):
         )
         grp = g.groupby(group_cols)
         Q   = grp["수량"].sum()
+        # 가중평균 단가: Σ(단가 × 수량) / Σ수량
         PQ  = grp.apply(lambda x: (x["단가_adj"] * x["수량"]).sum())
         P   = (PQ / Q.replace(0, np.nan)).fillna(0)
         ER  = grp["환율_adj"].mean()
@@ -154,10 +167,18 @@ def variance_analysis(base, curr):
     c = agg(curr).rename(columns={"Q": "Q1", "P": "P1", "ER": "ER1", "원화매출": "매출1"})
 
     m = pd.merge(b, c, on="품목명", how="outer").fillna(0)
-    m["단가차이"] = (m["P1"]  - m["P0"])  * m["Q1"]  * m["ER0"]
+
+    # ── Quantity-First 분해 공식 ─────────────────────────────────────────────
+    # ① 수량 차이: 단가·환율 기준 고정, 수량만 실적
     m["수량차이"] = (m["Q1"]  - m["Q0"])  * m["P0"]  * m["ER0"]
-    m["환율차이"] = (m["ER1"] - m["ER0"]) * m["P1"]  * m["Q1"]
+    # ② 단가 차이: 수량=실적, 환율=기준, 단가만 실적
+    m["단가차이"] = (m["P1"]  - m["P0"])  * m["Q1"]  * m["ER0"]
+    # ③ 환율 차이: 수량·단가 모두 실적, 환율만 실적
+    m["환율차이"] = (m["ER1"] - m["ER0"]) * m["Q1"]  * m["P1"]
+
     m["총차이"]   = m["매출1"] - m["매출0"]
+    # 검증용: 세 차이의 합 = 총차이 (부동소수점 오차 허용)
+    m["_검증"]    = m["수량차이"] + m["단가차이"] + m["환율차이"]
     return m
 
 
@@ -189,22 +210,29 @@ def kpi_card(col, label, value, neutral=False):
     </div>""", unsafe_allow_html=True)
 
 
-def render_waterfall(total_base, price_var, qty_var, fx_var, total_curr, base_label, curr_label):
+def render_waterfall(total_base, qty_var, price_var, fx_var, total_curr, base_label, curr_label):
     import plotly.graph_objects as go
     fig = go.Figure(go.Waterfall(
         orientation="v",
         measure=["absolute", "relative", "relative", "relative", "total"],
-        x=[f"기준\n({base_label})", "①단가\n차이", "②수량\n차이", "③환율\n차이", f"실적\n({curr_label})"],
-        y=[total_base, price_var, qty_var, fx_var, 0],
+        x=[
+            f"기준\n({base_label})",
+            "①수량\n차이",
+            "②단가\n차이",
+            "③환율\n차이",
+            f"실적\n({curr_label})",
+        ],
+        y=[total_base, qty_var, price_var, fx_var, 0],
         connector={"line": {"color": "#ccc"}},
         increasing={"marker": {"color": "#1a7a4a"}},
         decreasing={"marker": {"color": "#c0392b"}},
         totals={"marker": {"color": "#4472c4"}},
-        text=[f"{v:,.0f}" for v in [total_base, price_var, qty_var, fx_var, total_curr]],
+        text=[f"{v:,.0f}" for v in [total_base, qty_var, price_var, fx_var, total_curr]],
         textposition="outside",
     ))
     fig.update_layout(
-        height=380, margin=dict(t=30, b=20, l=30, r=30),
+        height=400,
+        margin=dict(t=30, b=20, l=30, r=30),
         yaxis_title="원(₩)",
         font=dict(family="Malgun Gothic, AppleGothic, sans-serif", size=12),
         plot_bgcolor="white", paper_bgcolor="white",
@@ -271,7 +299,7 @@ with st.sidebar:
         st.markdown("---")
         st.markdown("### ⚙️ 표시 설정")
         show_detail = st.checkbox("수량·단가·환율 상세 컬럼 표시", value=False)
-        st.caption("ℹ️ 단가차이 + 수량차이 + 환율차이 ≈ 총차이")
+        st.caption("ℹ️ ①수량차이 + ②단가차이 + ③환율차이 = 총차이")
 
         # 기간 데이터 필터
         df_base = df_all[(df_all["연도"] == base_year)  & (df_all["월"] == base_month)].copy()
@@ -287,7 +315,7 @@ with st.sidebar:
 # 메인 화면
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="main-title">📊 매출 차이 분석</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">품목별 단가차이 · 수량차이 · 환율차이 분해 분석</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">수량 차이 우선 분석 모델 (Quantity-First) │ ①수량차이 · ②단가차이 · ③환율차이 분해</div>', unsafe_allow_html=True)
 
 # 파일 미업로드
 if df_all is None:
@@ -406,16 +434,16 @@ k4, k5, k6 = st.columns(3)
 kpi_card(k1, f"기준 매출 ({base_label})", total_base, neutral=True)
 kpi_card(k2, f"실적 매출 ({curr_label})", total_curr, neutral=True)
 kpi_card(k3, "총 차이 (실적 − 기준)", total_diff)
-kpi_card(k4, "① 단가 차이", price_var)
-kpi_card(k5, "② 수량 차이", qty_var)
-kpi_card(k6, "③ 환율 차이", fx_var)
+kpi_card(k4, "① 수량 차이  (Q1−Q0)×P0×ER0", qty_var)
+kpi_card(k5, "② 단가 차이  (P1−P0)×Q1×ER0", price_var)
+kpi_card(k6, "③ 환율 차이  (ER1−ER0)×Q1×P1", fx_var)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 상세 분석 테이블
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-header">📋 품목별 차이 분석 테이블</div>', unsafe_allow_html=True)
 
-display_cols = ["품목명", "매출0", "매출1", "총차이", "단가차이", "수량차이", "환율차이"]
+display_cols = ["품목명", "매출0", "매출1", "총차이", "수량차이", "단가차이", "환율차이"]
 if show_detail:
     display_cols += ["Q0", "Q1", "P0", "P1", "ER0", "ER1"]
 
@@ -425,8 +453,8 @@ rename_map = {
     "매출0":    f"기준매출(원) [{base_label}]",
     "매출1":    f"실적매출(원) [{curr_label}]",
     "총차이":   "총차이(원)",
-    "단가차이": "①단가차이(원)",
-    "수량차이": "②수량차이(원)",
+    "수량차이": "①수량차이(원)",
+    "단가차이": "②단가차이(원)",
     "환율차이": "③환율차이(원)",
     "Q0": "기준수량", "Q1": "실적수량",
     "P0": "기준단가", "P1": "실적단가",
@@ -436,7 +464,7 @@ va_disp = va_disp.rename(columns=rename_map)
 
 money_cols = [
     f"기준매출(원) [{base_label}]", f"실적매출(원) [{curr_label}]",
-    "총차이(원)", "①단가차이(원)", "②수량차이(원)", "③환율차이(원)",
+    "총차이(원)", "①수량차이(원)", "②단가차이(원)", "③환율차이(원)",
     "기준수량", "실적수량", "기준단가", "실적단가",
 ]
 
@@ -472,7 +500,7 @@ try:
     tab_wf, tab_bar = st.tabs(["🌊 Waterfall (전체 합산)", "📊 품목별 총차이"])
 
     with tab_wf:
-        fig_wf = render_waterfall(total_base, price_var, qty_var, fx_var, total_curr, base_label, curr_label)
+        fig_wf = render_waterfall(total_base, qty_var, price_var, fx_var, total_curr, base_label, curr_label)
         st.plotly_chart(fig_wf, use_container_width=True)
 
     with tab_bar:

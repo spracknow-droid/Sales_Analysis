@@ -592,18 +592,18 @@ with st.sidebar:
 
         # ── 모델 A 카드 ───────────────────────────────────────────────────────
         if is_A_active:
-            card_a_style = "background:#1e3a6e; border:2px solid #1e3a6e; border-radius:10px; padding:13px 15px; margin-bottom:4px;"
+            # 선택됨: 짙은 네이비 배경 → 흰 제목, 밝은 하늘색 본문
+            card_a_style  = "background:#1e3a6e; border:2px solid #1e3a6e; border-radius:10px; padding:13px 15px; margin-bottom:4px;"
             title_a_style = "font-size:0.9rem; font-weight:800; color:#ffffff;"
-            desc_a_style  = "font-size:0.76rem; color:#c8d8f8; margin-top:5px; line-height:1.6;"
+            desc_a_style  = "font-size:0.76rem; color:#c8dcff; margin-top:5px; line-height:1.6;"
             tag_a_style   = "display:inline-block; font-size:0.69rem; font-weight:700; border-radius:4px; padding:2px 8px; margin-top:7px; background:#ffffff; color:#1e3a6e;"
-            check_a       = "✔ 선택됨"
             btn_a_label   = "✔ 선택됨 (모델 A)"
         else:
-            card_a_style = "background:#f0f5ff; border:2px solid #2d5faa; border-radius:10px; padding:13px 15px; margin-bottom:4px; opacity:0.75;"
-            title_a_style = "font-size:0.9rem; font-weight:800; color:#1e3a6e;"
-            desc_a_style  = "font-size:0.76rem; color:#3d4d65; margin-top:5px; line-height:1.6;"
-            tag_a_style   = "display:inline-block; font-size:0.69rem; font-weight:700; border-radius:4px; padding:2px 8px; margin-top:7px; background:#2d5faa; color:white;"
-            check_a       = ""
+            # 비선택: 연한 파랑 배경 → 어두운 텍스트
+            card_a_style  = "background:#dde8ff; border:2px solid #2d5faa; border-radius:10px; padding:13px 15px; margin-bottom:4px;"
+            title_a_style = "font-size:0.9rem; font-weight:800; color:#0d2050;"
+            desc_a_style  = "font-size:0.76rem; color:#1a2d50; margin-top:5px; line-height:1.6;"
+            tag_a_style   = "display:inline-block; font-size:0.69rem; font-weight:700; border-radius:4px; padding:2px 8px; margin-top:7px; background:#1e3a6e; color:#ffffff;"
             btn_a_label   = "이 모델 선택 →"
 
         st.markdown(f"""
@@ -629,16 +629,18 @@ with st.sidebar:
 
         # ── 모델 B 카드 ───────────────────────────────────────────────────────
         if not is_A_active:
-            card_b_style = "background:#7a3300; border:2px solid #7a3300; border-radius:10px; padding:13px 15px; margin-bottom:4px;"
+            # 선택됨: 짙은 다크오렌지 배경 → 흰 제목, 밝은 크림 본문
+            card_b_style  = "background:#7a3300; border:2px solid #7a3300; border-radius:10px; padding:13px 15px; margin-bottom:4px;"
             title_b_style = "font-size:0.9rem; font-weight:800; color:#ffffff;"
-            desc_b_style  = "font-size:0.76rem; color:#ffd5b0; margin-top:5px; line-height:1.6;"
+            desc_b_style  = "font-size:0.76rem; color:#ffd8b0; margin-top:5px; line-height:1.6;"
             tag_b_style   = "display:inline-block; font-size:0.69rem; font-weight:700; border-radius:4px; padding:2px 8px; margin-top:7px; background:#ffffff; color:#7a3300;"
             btn_b_label   = "✔ 선택됨 (모델 B)"
         else:
-            card_b_style = "background:#fff6ee; border:2px solid #c9641a; border-radius:10px; padding:13px 15px; margin-bottom:4px; opacity:0.75;"
-            title_b_style = "font-size:0.9rem; font-weight:800; color:#7a3300;"
-            desc_b_style  = "font-size:0.76rem; color:#3d4d65; margin-top:5px; line-height:1.6;"
-            tag_b_style   = "display:inline-block; font-size:0.69rem; font-weight:700; border-radius:4px; padding:2px 8px; margin-top:7px; background:#c9641a; color:white;"
+            # 비선택: 연한 오렌지 배경 → 어두운 갈색 텍스트
+            card_b_style  = "background:#ffe0c0; border:2px solid #c9641a; border-radius:10px; padding:13px 15px; margin-bottom:4px;"
+            title_b_style = "font-size:0.9rem; font-weight:800; color:#5a1800;"
+            desc_b_style  = "font-size:0.76rem; color:#4a1800; margin-top:5px; line-height:1.6;"
+            tag_b_style   = "display:inline-block; font-size:0.69rem; font-weight:700; border-radius:4px; padding:2px 8px; margin-top:7px; background:#7a3300; color:#ffffff;"
             btn_b_label   = "이 모델 선택 →"
 
         st.markdown(f"""
@@ -730,11 +732,11 @@ c1, c2 = st.columns(2)
 base_ok = not df_base.empty
 curr_ok = not df_curr.empty
 c1.markdown(
-    f'<div style="background:#e8f0fe;border-radius:8px;padding:9px 15px;">'
+    f'<div style="background:#c8d8f8;border-radius:8px;padding:9px 15px;color:#0d1f3c;font-weight:600;">'
     f'<b>기준</b>: {base_label} &nbsp; {"✅ "+str(len(df_base))+"건" if base_ok else "⚠️ 데이터 없음"}'
     f'</div>', unsafe_allow_html=True)
 c2.markdown(
-    f'<div style="background:#e6f4ea;border-radius:8px;padding:9px 15px;">'
+    f'<div style="background:#b8e8c8;border-radius:8px;padding:9px 15px;color:#0a2d18;font-weight:600;">'
     f'<b>실적</b>: {curr_label} &nbsp; {"✅ "+str(len(df_curr))+"건" if curr_ok else "⚠️ 데이터 없음"}'
     f'</div>', unsafe_allow_html=True)
 st.markdown("<br/>", unsafe_allow_html=True)
@@ -967,37 +969,48 @@ st.markdown('<div class="section-header">📖 분석 모델 상세 비교</div>'
 # ── 공통 CSS (단순 클래스만) ─────────────────────────────────────────────────
 st.markdown("""<style>
 .fb-block { border-radius:8px; padding:13px 16px; margin:6px 0; font-family:'Malgun Gothic','AppleGothic',sans-serif; }
-.fb-block-qty   { background:#eef7ff; border-left:4px solid #2d5faa; }
-.fb-block-price { background:#fff4ee; border-left:4px solid #c9641a; }
-.fb-block-fx    { background:#f0faf4; border-left:4px solid #1a7a4a; }
+/* 밝은 배경 박스 → 어두운 텍스트 */
+.fb-block-qty   { background:#ddeeff; border-left:4px solid #1a4a9a; }
+.fb-block-price { background:#ffe8d0; border-left:4px solid #9a3d00; }
+.fb-block-fx    { background:#d4f0e0; border-left:4px solid #0d5c30; }
+/* 제목 — 각 배경에서 잘 보이는 진한 색 */
 .fb-title { font-size:0.72rem; font-weight:800; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:7px; }
-.fb-title-qty   { color:#2d5faa; }
-.fb-title-price { color:#c9641a; }
-.fb-title-fx    { color:#1a7a4a; }
+.fb-title-qty   { color:#0d2d6e; }
+.fb-title-price { color:#6b2200; }
+.fb-title-fx    { color:#0a3d20; }
+/* 수식 박스 — 배경보다 살짝 진하게, 텍스트는 검정 */
 .fb-eq  { font-family:'Courier New',monospace; font-size:0.9rem; font-weight:700;
-          background:rgba(0,0,0,0.07); padding:6px 11px; border-radius:4px;
+          background:rgba(0,0,0,0.10); color:#0d1f3c; padding:6px 11px; border-radius:4px;
           display:block; margin:6px 0; }
 .fb-eq2 { font-family:'Courier New',monospace; font-size:0.78rem; font-weight:600;
-          background:rgba(0,0,0,0.05); padding:4px 9px; border-radius:3px;
+          background:rgba(0,0,0,0.08); color:#0d1f3c; padding:4px 9px; border-radius:3px;
           display:block; margin:3px 0; }
-.fb-desc { font-size:0.76rem; color:#374151; line-height:1.6; margin-top:5px; }
-.fb-note { font-size:0.71rem; color:#6b7280; background:rgba(0,0,0,0.04);
-           padding:3px 9px; border-radius:3px; display:inline-block; margin-top:6px; }
+/* 설명 텍스트 — 진한 회색 */
+.fb-desc { font-size:0.76rem; color:#1a2535; line-height:1.6; margin-top:5px; }
+/* 노트 뱃지 — 배경보다 진하게 */
+.fb-note { font-size:0.71rem; color:#1a2535; background:rgba(0,0,0,0.10);
+           padding:3px 9px; border-radius:3px; display:inline-block; margin-top:6px; font-weight:600; }
+/* Case 그리드 */
 .case-g { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:7px; }
-.case-b { background:white; border:1px solid #bbddb0; border-radius:6px; padding:7px 9px; }
-.case-lbl { font-size:0.7rem; font-weight:800; color:#166534; margin-bottom:3px; }
+.case-b { background:white; border:1px solid #7abf90; border-radius:6px; padding:7px 9px; }
+.case-lbl { font-size:0.7rem; font-weight:800; color:#0a3d20; margin-bottom:3px; }
 .case-eq  { font-family:'Courier New',monospace; font-size:0.71rem;
-            background:#f0faf4; padding:2px 5px; border-radius:3px; display:block; }
+            background:#c8ecd8; color:#0a3d20; padding:2px 5px; border-radius:3px; display:block; font-weight:600; }
+/* 비교 테이블 */
 .diff-tbl { width:100%; border-collapse:collapse; font-family:'Malgun Gothic','AppleGothic',sans-serif; font-size:0.8rem; margin-top:6px; }
 .diff-tbl th { padding:9px 12px; font-weight:800; text-align:center; }
-.diff-tbl td { padding:9px 12px; border:1px solid #e5e7eb; vertical-align:top; line-height:1.55; }
-.diff-tbl .td-cat { background:#f0f4ff; color:#1e3a6e; font-weight:800; text-align:center; width:140px; }
-.diff-tbl .td-a   { background:#f7faff; color:#1e3a6e; }
-.diff-tbl .td-b   { background:#fff8f3; color:#6b2d00; }
+.diff-tbl td { padding:9px 12px; border:1px solid #d0d8e8; vertical-align:top; line-height:1.55; }
+/* td-cat: 연한 파랑 → 진한 네이비 텍스트 */
+.diff-tbl .td-cat { background:#dde6ff; color:#0d1f3c; font-weight:800; text-align:center; width:140px; }
+/* td-a: 매우 연한 파랑 → 진한 네이비 */
+.diff-tbl .td-a   { background:#eef3ff; color:#0d1f3c; }
+/* td-b: 매우 연한 오렌지 → 진한 갈색 */
+.diff-tbl .td-b   { background:#fff0e0; color:#4a1800; }
+/* 칩 뱃지 — 모두 어두운 배경에 흰 글씨 OR 진한 색에 진한 글씨 (충분한 대비) */
 .ch { display:inline-block; font-size:0.68rem; font-weight:800; border-radius:20px; padding:2px 9px; margin:1px 2px; }
-.ch-b { background:#dbeafe; color:#1e40af; }
-.ch-o { background:#fed7aa; color:#9a3412; }
-.ch-g { background:#d1fae5; color:#065f46; }
+.ch-b { background:#1e40af; color:#ffffff; }
+.ch-o { background:#9a3412; color:#ffffff; }
+.ch-g { background:#065f46; color:#ffffff; }
 </style>""", unsafe_allow_html=True)
 
 # ── 모델 헤더 배너 ─────────────────────────────────────────────────────────────
@@ -1006,15 +1019,15 @@ with col_a:
     st.markdown("""
     <div style="background:linear-gradient(135deg,#1e3a6e,#2d5faa);border-radius:10px;
                 padding:14px 18px;color:white;margin-bottom:8px;">
-      <div style="font-size:1.0rem;font-weight:900;margin-bottom:3px;">📐 모델 A — 원인별 임팩트 분석</div>
-      <div style="font-size:0.78rem;opacity:0.85;">재무·감사·외부보고 표준 | 변수 간 간섭 완전 제거</div>
+      <div style="font-size:1.0rem;font-weight:900;margin-bottom:3px;color:#ffffff;">📐 모델 A — 원인별 임팩트 분석</div>
+      <div style="font-size:0.78rem;color:#c8dcff;">재무·감사·외부보고 표준 | 변수 간 간섭 완전 제거</div>
     </div>""", unsafe_allow_html=True)
 with col_b:
     st.markdown("""
     <div style="background:linear-gradient(135deg,#7a3300,#c9641a);border-radius:10px;
                 padding:14px 18px;color:white;margin-bottom:8px;">
-      <div style="font-size:1.0rem;font-weight:900;margin-bottom:3px;">📈 모델 B — 활동별 증분 분석</div>
-      <div style="font-size:0.78rem;opacity:0.85;">영업·전략 보고용 | 실제 비즈니스 가치 평가</div>
+      <div style="font-size:1.0rem;font-weight:900;margin-bottom:3px;color:#ffffff;">📈 모델 B — 활동별 증분 분석</div>
+      <div style="font-size:0.78rem;color:#ffd8b0;">영업·전략 보고용 | 실제 비즈니스 가치 평가</div>
     </div>""", unsafe_allow_html=True)
 
 # ── ① 수량 차이 ───────────────────────────────────────────────────────────────
@@ -1038,10 +1051,10 @@ with col_b:
       <div class="fb-title fb-title-qty">① 수량 차이 (Volume Incremental)</div>
       <div class="fb-desc">💡 <b>새로 판 물건은 현재 가격으로, 잃은 물건은 과거 가격으로</b></div>
       <div style="margin-top:8px;">
-        <div style="font-size:0.73rem;font-weight:800;color:#166534;margin-bottom:2px;">▲ 수량 증가 시</div>
+        <div style="font-size:0.73rem;font-weight:800;color:#0a4d20;margin-bottom:2px;">▲ 수량 증가 시</div>
         <span class="fb-eq2">(Q당해 − Q전년) × P당해_원화단가</span>
         <div class="fb-desc">새로 확보한 물량 → 현재 가격으로 가치 산정</div>
-        <div style="font-size:0.73rem;font-weight:800;color:#dc2626;margin:7px 0 2px 0;">▼ 수량 감소 시</div>
+        <div style="font-size:0.73rem;font-weight:800;color:#8b0000;margin:7px 0 2px 0;">▼ 수량 감소 시</div>
         <span class="fb-eq2">(Q당해 − Q전년) × P전년_원화단가</span>
         <div class="fb-desc">잃어버린 물량 → 과거 가격만큼의 손실</div>
       </div>

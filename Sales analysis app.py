@@ -725,9 +725,22 @@ st.download_button(
 )
 
 # ── 원본 데이터 ───────────────────────────────────────────────────────────────
-with st.expander("🗂️ 원본 데이터 확인"):
-    t1, t2 = st.tabs([f"기준 ({base_label})", f"실적 ({curr_label})"])
+with st.expander("🗂️ 원본 데이터 확인 (선택 품목 기준)"):
+    # 현재 선택된 품목으로만 필터
+    raw_base = df_base[df_base["품목명"].isin(selected_items)].reset_index(drop=True)
+    raw_curr = df_curr[df_curr["품목명"].isin(selected_items)].reset_index(drop=True)
+
+    t1, t2 = st.tabs([
+        f"기준 ({base_label}) · {len(raw_base):,}건",
+        f"실적 ({curr_label}) · {len(raw_curr):,}건",
+    ])
     with t1:
-        st.dataframe(df_base.reset_index(drop=True), use_container_width=True, height=280)
+        if raw_base.empty:
+            st.info("선택된 품목의 기준 기간 데이터가 없습니다.")
+        else:
+            st.dataframe(raw_base, use_container_width=True, height=280)
     with t2:
-        st.dataframe(df_curr.reset_index(drop=True), use_container_width=True, height=280)
+        if raw_curr.empty:
+            st.info("선택된 품목의 실적 기간 데이터가 없습니다.")
+        else:
+            st.dataframe(raw_curr, use_container_width=True, height=280)

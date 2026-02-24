@@ -20,53 +20,102 @@ st.set_page_config(
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-html, body, [class*="css"] { font-family: 'Malgun Gothic', 'AppleGothic', sans-serif; }
+/* ── 기본 폰트 ── */
+html, body, [class*="css"] {
+    font-family: 'Malgun Gothic', 'AppleGothic', 'Noto Sans KR', sans-serif;
+}
 
-.main-title { font-size: 1.7rem; font-weight: 800; color: #1f3864; margin-bottom: 0.1rem; }
-.sub-title  { font-size: 0.88rem; color: #777; margin-bottom: 0.8rem; }
+/* ── 타이틀 ── */
+.main-title {
+    font-size: 1.75rem; font-weight: 900; color: #0d1f3c;
+    letter-spacing: -0.5px; margin-bottom: 0.15rem;
+}
+.sub-title {
+    font-size: 0.88rem; color: #5a6a85; margin-bottom: 1rem; font-weight: 500;
+}
 
+/* ── 섹션 헤더 ── */
 .section-header {
-    font-size: 1.05rem; font-weight: 700; color: #1f3864;
-    border-bottom: 2px solid #4472c4; padding-bottom: 5px;
-    margin: 1.5rem 0 0.8rem 0;
+    font-size: 1.0rem; font-weight: 800;
+    background: linear-gradient(90deg, #1e3a6e 0%, #2d5faa 100%);
+    color: white; padding: 8px 16px; border-radius: 6px;
+    margin: 1.6rem 0 1rem 0; letter-spacing: 0.3px;
 }
 
-/* KPI 카드 */
+/* ── KPI 카드 ── */
 .kpi-card {
-    background: #f5f7ff; border-radius: 10px;
-    padding: 14px 18px; border-left: 5px solid #4472c4;
-    margin-bottom: 8px;
+    border-radius: 10px; padding: 16px 20px;
+    margin-bottom: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
-.kpi-label { font-size: 0.72rem; color: #555; margin-bottom: 3px; line-height:1.3; }
-.kpi-formula { font-size: 0.65rem; color: #999; margin-bottom: 4px; font-style: italic; }
-.kpi-value { font-size: 1.2rem; font-weight: 800; color: #1f3864; }
-.kpi-pos   { color: #1a7a4a; }
-.kpi-neg   { color: #c0392b; }
-
-/* 분석 모델 카드 */
-.model-card {
-    border-radius: 10px; padding: 14px 16px; margin-bottom: 6px;
-    border: 2px solid transparent; cursor: pointer;
+.kpi-card-neutral {
+    background: #ffffff; border: 1px solid #c8d6f0; border-top: 4px solid #2d5faa;
 }
-.model-card-A { background: #eef4ff; border-color: #4472c4; }
-.model-card-B { background: #fff8ee; border-color: #e6812a; }
-.model-title-A { font-size: 0.85rem; font-weight: 700; color: #1f3864; }
-.model-title-B { font-size: 0.85rem; font-weight: 700; color: #8b4c0a; }
-.model-desc  { font-size: 0.75rem; color: #555; margin-top: 4px; line-height: 1.5; }
-.model-tag   { display:inline-block; font-size:0.68rem; font-weight:700;
-               border-radius:4px; padding:2px 7px; margin-top:6px; }
-.tag-A { background:#4472c4; color:white; }
-.tag-B { background:#e6812a; color:white; }
+.kpi-card-total {
+    background: #f0f4ff; border: 1px solid #a8bde8; border-top: 4px solid #1e3a6e;
+}
+.kpi-card-pos {
+    background: #f0faf4; border: 1px solid #8ecba8; border-top: 4px solid #1a7a4a;
+}
+.kpi-card-neg {
+    background: #fdf2f2; border: 1px solid #e8a8a8; border-top: 4px solid #c0392b;
+}
+.kpi-card-zero {
+    background: #f7f8fa; border: 1px solid #d0d5de; border-top: 4px solid #8a95a8;
+}
+.kpi-label {
+    font-size: 0.78rem; font-weight: 700; color: #3a4a65;
+    margin-bottom: 3px; letter-spacing: 0.2px;
+}
+.kpi-formula {
+    font-size: 0.67rem; color: #7a8aaa; margin-bottom: 6px;
+    font-family: 'Courier New', monospace; background: rgba(0,0,0,0.04);
+    padding: 2px 6px; border-radius: 3px; display: inline-block;
+}
+.kpi-value {
+    font-size: 1.35rem; font-weight: 900; letter-spacing: -0.5px; margin-top: 4px;
+}
+.kpi-val-neutral { color: #1e3a6e; }
+.kpi-val-pos     { color: #155d35; }
+.kpi-val-neg     { color: #9e1f1f; }
+.kpi-val-zero    { color: #6b7a95; }
 
-/* 기간 배지 */
+/* ── 분석 모델 카드 ── */
+.model-card-A {
+    background: #f0f5ff; border: 2px solid #2d5faa;
+    border-radius: 10px; padding: 13px 15px; margin-bottom: 6px;
+}
+.model-card-B {
+    background: #fff6ee; border: 2px solid #c9641a;
+    border-radius: 10px; padding: 13px 15px; margin-bottom: 6px;
+}
+.model-title-A { font-size: 0.88rem; font-weight: 800; color: #1e3a6e; }
+.model-title-B { font-size: 0.88rem; font-weight: 800; color: #7a3300; }
+.model-desc {
+    font-size: 0.76rem; color: #3d4d65; margin-top: 5px;
+    line-height: 1.6; font-weight: 500;
+}
+.model-tag {
+    display: inline-block; font-size: 0.69rem; font-weight: 700;
+    border-radius: 4px; padding: 2px 8px; margin-top: 7px;
+}
+.tag-A { background: #2d5faa; color: white; }
+.tag-B { background: #c9641a; color: white; }
+
+/* ── 기간 배지 ── */
 .period-badge {
     display: inline-block; border-radius: 6px;
-    padding: 3px 10px; font-size: 0.78rem; font-weight: 600; margin: 2px 2px;
+    padding: 4px 12px; font-size: 0.8rem; font-weight: 700; margin: 3px 3px;
 }
-.badge-base { background: #e8f0fe; color: #1a56c4; }
-.badge-curr { background: #e6f4ea; color: #1a7a4a; }
+.badge-base { background: #1e3a6e; color: #ffffff; }
+.badge-curr { background: #1a7a4a; color: #ffffff; }
 
+/* ── 테이블 ── */
 div[data-testid="stDataFrame"] { width: 100% !important; }
+div[data-testid="stDataFrame"] table { font-size: 0.83rem !important; }
+div[data-testid="stDataFrame"] th {
+    background: #1e3a6e !important; color: white !important;
+    font-weight: 700 !important; font-size: 0.78rem !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -303,35 +352,132 @@ def styled_df(df, money_cols):
 
 def kpi_card(col, label, formula, value, neutral=False):
     sign = "+" if value > 0 else ""
-    css  = "" if neutral else ("kpi-pos" if value > 0 else ("kpi-neg" if value < 0 else ""))
+    if neutral:
+        card_cls = "kpi-card-neutral"
+        val_cls  = "kpi-val-neutral"
+    elif value > 0:
+        card_cls = "kpi-card-pos"
+        val_cls  = "kpi-val-pos"
+    elif value < 0:
+        card_cls = "kpi-card-neg"
+        val_cls  = "kpi-val-neg"
+    else:
+        card_cls = "kpi-card-zero"
+        val_cls  = "kpi-val-zero"
     col.markdown(f"""
-    <div class="kpi-card">
+    <div class="kpi-card {card_cls}">
         <div class="kpi-label">{label}</div>
         <div class="kpi-formula">{formula}</div>
-        <div class="kpi-value {css}">{sign}{value:,.0f} 원</div>
+        <div class="kpi-value {val_cls}">{sign}{value:,.0f} 원</div>
     </div>""", unsafe_allow_html=True)
 
 
 def render_waterfall(total_base, qty_v, price_v, fx_v, total_curr, base_label, curr_label, accent):
     import plotly.graph_objects as go
+
+    # ── 색상 팔레트 ──────────────────────────────────────────────────────────
+    CLR_BASE  = "#2d5faa"      # 기준매출 - 짙은 파랑
+    CLR_CURR  = "#1a7a4a"      # 실적매출 - 짙은 녹색
+    CLR_UP    = "#27ae60"      # 증가 - 선명한 녹
+    CLR_DOWN  = "#e74c3c"      # 감소 - 선명한 적
+    CLR_CONN  = "#bdc3c7"      # 연결선
+
+    # ── 각 bar 색상 결정 ─────────────────────────────────────────────────────
+    def bar_color(v, is_total=False, is_base=False):
+        if is_base:   return CLR_BASE
+        if is_total:  return CLR_CURR
+        return CLR_UP if v >= 0 else CLR_DOWN
+
+    # ── 레이블 텍스트 ─────────────────────────────────────────────────────────
+    def fmt_label(v, is_total=False, is_base=False):
+        if is_base or is_total:
+            return f"<b>{v:,.0f}</b>"
+        sign = "▲ +" if v > 0 else ("▼ " if v < 0 else "")
+        color = CLR_UP if v >= 0 else CLR_DOWN
+        return f"<b><span style='color:{color}'>{sign}{v:,.0f}</span></b>"
+
+    x_labels = [
+        f"<b>기준 매출</b><br><sub>({base_label})</sub>",
+        "<b>① 수량 차이</b>",
+        "<b>② 단가 차이</b>",
+        "<b>③ 환율 차이</b>",
+        f"<b>실적 매출</b><br><sub>({curr_label})</sub>",
+    ]
+    y_vals    = [total_base, qty_v, price_v, fx_v, 0]
+    measures  = ["absolute", "relative", "relative", "relative", "total"]
+    bar_clrs  = [CLR_BASE, bar_color(qty_v), bar_color(price_v), bar_color(fx_v), CLR_CURR]
+
+    text_labels = [
+        f"<b>{total_base:,.0f}</b>",
+        fmt_label(qty_v),
+        fmt_label(price_v),
+        fmt_label(fx_v),
+        f"<b>{total_curr:,.0f}</b>",
+    ]
+
     fig = go.Figure(go.Waterfall(
-        orientation="v",
-        measure=["absolute", "relative", "relative", "relative", "total"],
-        x=[f"기준\n({base_label})", "①수량차이", "②단가차이", "③환율차이", f"실적\n({curr_label})"],
-        y=[total_base, qty_v, price_v, fx_v, 0],
-        connector={"line": {"color": "#ccc"}},
-        increasing={"marker": {"color": "#1a7a4a"}},
-        decreasing={"marker": {"color": "#c0392b"}},
-        totals={"marker": {"color": accent}},
-        text=[f"{v:,.0f}" for v in [total_base, qty_v, price_v, fx_v, total_curr]],
-        textposition="outside",
+        orientation   = "v",
+        measure       = measures,
+        x             = x_labels,
+        y             = y_vals,
+        text          = text_labels,
+        textposition  = "outside",
+        textfont      = dict(size=13, family="Malgun Gothic, AppleGothic, sans-serif"),
+        connector     = dict(line=dict(color=CLR_CONN, width=1.5, dash="dot")),
+        increasing    = dict(marker=dict(color=CLR_UP,   line=dict(color="#1e8449", width=1.2))),
+        decreasing    = dict(marker=dict(color=CLR_DOWN, line=dict(color="#b03a2e", width=1.2))),
+        totals        = dict(marker=dict(color=CLR_CURR, line=dict(color="#145a32", width=1.2))),
     ))
+
+    # 기준매출 bar 색상 덮어쓰기 (absolute는 increasing으로 인식되므로 별도 지정)
+    fig.data[0].marker.color = bar_clrs
+
+    # 차이 합계를 subtitle로 계산
+    diff_val  = total_curr - total_base
+    diff_sign = "▲ +" if diff_val >= 0 else "▼ "
+    diff_pct  = f"({diff_val/total_base*100:+.1f}%)" if total_base != 0 else ""
+
     fig.update_layout(
-        height=400, margin=dict(t=30, b=20, l=30, r=30),
-        yaxis_title="원(₩)",
-        font=dict(family="Malgun Gothic, AppleGothic, sans-serif", size=12),
-        plot_bgcolor="white", paper_bgcolor="white",
+        title=dict(
+            text=(f"<b>매출 차이 분석 Waterfall</b>"
+                  f"<br><sup style='color:#555'>{base_label} → {curr_label} &nbsp;│&nbsp; "
+                  f"총차이: {diff_sign}{diff_val:,.0f}원 {diff_pct}</sup>"),
+            font=dict(size=15, color="#0d1f3c"),
+            x=0.01, xanchor="left",
+        ),
+        height      = 480,
+        margin      = dict(t=80, b=60, l=60, r=60),
+        yaxis       = dict(
+            title       = "원화 매출 (₩)",
+            titlefont   = dict(size=12, color="#3a4a65"),
+            tickfont    = dict(size=11, color="#3a4a65"),
+            gridcolor   = "#e8ecf3",
+            gridwidth   = 1,
+            zeroline    = True,
+            zerolinecolor = "#8a95a8",
+            zerolinewidth = 1.5,
+        ),
+        xaxis       = dict(
+            tickfont    = dict(size=12, color="#0d1f3c"),
+            tickangle   = 0,
+        ),
+        plot_bgcolor  = "#fafbfd",
+        paper_bgcolor = "#ffffff",
+        font          = dict(family="Malgun Gothic, AppleGothic, sans-serif"),
+        showlegend    = False,
     )
+
+    # 기준/실적 금액 annotation (bar 내부)
+    for i, (lbl, val) in enumerate([(base_label, total_base), (curr_label, total_curr)]):
+        x_pos = 0 if i == 0 else 4
+        fig.add_annotation(
+            x=x_pos, y=val / 2,
+            text=f"<b>{val:,.0f}</b>",
+            showarrow=False,
+            font=dict(size=11, color="white", family="Malgun Gothic, AppleGothic, sans-serif"),
+            xanchor="center", yanchor="middle",
+        )
+
     return fig
 
 
@@ -640,20 +786,29 @@ k4, k5, k6 = st.columns(3)
 
 kpi_card(k1, f"기준 매출 ({base_label})", "원화 실적 합계", total_base, neutral=True)
 kpi_card(k2, f"실적 매출 ({curr_label})", "원화 실적 합계", total_curr, neutral=True)
-kpi_card(k3, "총 차이 (실적 − 기준)", "①+②+③ 합계", total_diff)
+# 총차이는 별도 카드 타입(total)으로 강조
+sign_td = "+" if total_diff > 0 else ""
+card_td = "kpi-card-pos" if total_diff > 0 else ("kpi-card-neg" if total_diff < 0 else "kpi-card-zero")
+val_td  = "kpi-val-pos"  if total_diff > 0 else ("kpi-val-neg"  if total_diff < 0 else "kpi-val-zero")
+k3.markdown(f"""
+<div class="kpi-card {card_td}" style="border-top-width:5px;">
+    <div class="kpi-label">▶ 총 차이 (실적 − 기준)</div>
+    <div class="kpi-formula">①수량 + ②단가 + ③환율</div>
+    <div class="kpi-value {val_td}" style="font-size:1.5rem;">{sign_td}{total_diff:,.0f} 원</div>
+</div>""", unsafe_allow_html=True)
 
 if is_model_A:
     kpi_card(k4, "① 수량 차이", "(Q1−Q0)×P0_fx×ER0", qty_v)
     kpi_card(k5, "② 단가 차이", "(P1−P0)×Q1×ER0", price_v)
     if all_krw_selected:
-        k6.markdown('<div class="kpi-card"><div class="kpi-label">③ 환율 차이</div><div class="kpi-formula">(ER1−ER0)×Q1×P1_fx</div><div class="kpi-value" style="color:#aaa;">— KRW 해당없음</div></div>', unsafe_allow_html=True)
+        k6.markdown('<div class="kpi-card kpi-card-zero"><div class="kpi-label">③ 환율 차이</div><div class="kpi-formula">(ER1−ER0)×Q1×P1_fx</div><div class="kpi-value kpi-val-zero">— KRW 해당없음</div></div>', unsafe_allow_html=True)
     else:
         kpi_card(k6, "③ 환율 차이", "(ER1−ER0)×Q1×P1_fx", fx_v)
 else:
     kpi_card(k4, "① 수량 차이 (Volume Incremental)", "Q↑→×P1_krw / Q↓→×P0_krw", qty_v)
     kpi_card(k5, "② 단가 차이 (Negotiation Residual)", "총차이 − ① − ③", price_v)
     if all_krw_selected:
-        k6.markdown('<div class="kpi-card"><div class="kpi-label">③ 환율 차이 (FX Exposure)</div><div class="kpi-formula">P/Q 방향 4-Case 분기</div><div class="kpi-value" style="color:#aaa;">— KRW 해당없음</div></div>', unsafe_allow_html=True)
+        k6.markdown('<div class="kpi-card kpi-card-zero"><div class="kpi-label">③ 환율 차이 (FX Exposure)</div><div class="kpi-formula">P/Q 방향 4-Case 분기</div><div class="kpi-value kpi-val-zero">— KRW 해당없음</div></div>', unsafe_allow_html=True)
     else:
         kpi_card(k6, "③ 환율 차이 (FX Exposure)", "P/Q 방향 4-Case 분기", fx_v)
 
@@ -686,17 +841,44 @@ try:
 
     with tab_bar:
         va_bar = va_filtered.set_index("품목명")["총차이"].sort_values()
+        bar_colors = ["#e74c3c" if v < 0 else "#27ae60" for v in va_bar.values]
+        bar_text   = [
+            f"▼ {v:,.0f}" if v < 0 else (f"▲ +{v:,.0f}" if v > 0 else f"{v:,.0f}")
+            for v in va_bar.values
+        ]
         fig_bar = go.Figure(go.Bar(
-            x=va_bar.values, y=va_bar.index, orientation="h",
-            marker_color=["#c0392b" if v < 0 else "#1a7a4a" for v in va_bar.values],
-            text=[f"{v:,.0f}" for v in va_bar.values],
-            textposition="outside",
+            x             = va_bar.values,
+            y             = va_bar.index,
+            orientation   = "h",
+            marker_color  = bar_colors,
+            marker_line   = dict(color=["#b03a2e" if v < 0 else "#1e8449" for v in va_bar.values], width=1),
+            text          = bar_text,
+            textposition  = "outside",
+            textfont      = dict(size=12, color="#0d1f3c",
+                                 family="Malgun Gothic, AppleGothic, sans-serif"),
         ))
         fig_bar.update_layout(
-            height=max(350, len(va_bar)*32),
-            margin=dict(l=180, r=120, t=20, b=20),
-            xaxis_title="원(₩)", plot_bgcolor="white", paper_bgcolor="white",
-            font=dict(family="Malgun Gothic, AppleGothic, sans-serif", size=12),
+            title=dict(
+                text="<b>품목별 총 매출 차이</b>",
+                font=dict(size=14, color="#0d1f3c"),
+                x=0.01, xanchor="left",
+            ),
+            height        = max(380, len(va_bar) * 40),
+            margin        = dict(l=10, r=140, t=50, b=30),
+            xaxis         = dict(
+                title     = "원화 매출 차이 (₩)",
+                titlefont = dict(size=11, color="#3a4a65"),
+                tickfont  = dict(size=11, color="#3a4a65"),
+                gridcolor = "#e8ecf3", gridwidth=1,
+                zeroline  = True, zerolinecolor="#5a6a85", zerolinewidth=2,
+            ),
+            yaxis         = dict(
+                tickfont  = dict(size=12, color="#0d1f3c", family="Malgun Gothic, AppleGothic"),
+                automargin= True,
+            ),
+            plot_bgcolor  = "#fafbfd",
+            paper_bgcolor = "#ffffff",
+            font          = dict(family="Malgun Gothic, AppleGothic, sans-serif"),
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 

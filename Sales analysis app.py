@@ -456,43 +456,39 @@ def render_waterfall(total_base, qty_v, price_v, fx_v, total_curr, base_label, c
         )
 
     # 총차이 subtitle 계산
-    diff_val  = total_curr - total_base
-    diff_sign = "▲ +" if diff_val >= 0 else "▼ "
-    diff_pct  = f"({diff_val / total_base * 100:+.1f}%)" if total_base != 0 else ""
-    diff_color= "#1a7a4a" if diff_val >= 0 else "#e74c3c"
+    diff_val   = total_curr - total_base
+    diff_sign  = "▲ +" if diff_val >= 0 else "▼ "
+    diff_pct   = f"({diff_val / total_base * 100:+.1f}%)" if total_base != 0 else ""
+    title_text = (f"매출 차이 분석 Waterfall  |  "
+                  f"{base_label} → {curr_label}  |  "
+                  f"총차이: {diff_sign}{diff_val:,.0f}원 {diff_pct}")
 
     fig.update_layout(
-        title = dict(
-            text=(f"<b>매출 차이 분석 Waterfall</b>"
-                  f"<br><sup style='color:#555'>{base_label} → {curr_label}"
-                  f" &nbsp;│&nbsp; 총차이: "
-                  f"<span style='color:{diff_color}'><b>{diff_sign}{diff_val:,.0f}원</b></span>"
-                  f" {diff_pct}</sup>"),
-            font      = dict(size=15, color="#0d1f3c"),
-            x         = 0.01,
-            xanchor   = "left",
+        title_text        = title_text,
+        title_font_size   = 14,
+        title_font_color  = "#0d1f3c",
+        title_x           = 0.01,
+        barmode           = "stack",
+        height            = 500,
+        margin            = dict(t=80, b=60, l=60, r=60),
+        plot_bgcolor      = "#fafbfd",
+        paper_bgcolor     = "#ffffff",
+        showlegend        = False,
+        font              = dict(family="Malgun Gothic, AppleGothic, sans-serif"),
+        xaxis             = dict(
+            tickfont      = dict(size=12, color="#0d1f3c"),
+            tickangle     = 0,
         ),
-        barmode       = "stack",
-        height        = 500,
-        margin        = dict(t=90, b=60, l=60, r=60),
-        yaxis         = dict(
-            title     = "원화 매출 (₩)",
-            titlefont = dict(size=12, color="#3a4a65"),
-            tickfont  = dict(size=11, color="#3a4a65"),
-            gridcolor = "#e8ecf3",
-            gridwidth = 1,
-            zeroline  = True,
+        yaxis             = dict(
+            title         = "원화 매출 (₩)",
+            title_font    = dict(size=12, color="#3a4a65"),
+            tickfont      = dict(size=11, color="#3a4a65"),
+            gridcolor     = "#e8ecf3",
+            gridwidth     = 1,
+            zeroline      = True,
             zerolinecolor = "#8a95a8",
             zerolinewidth = 1.5,
         ),
-        xaxis         = dict(
-            tickfont  = dict(size=12, color="#0d1f3c"),
-            tickangle = 0,
-        ),
-        plot_bgcolor  = "#fafbfd",
-        paper_bgcolor = "#ffffff",
-        font          = dict(family="Malgun Gothic, AppleGothic, sans-serif"),
-        showlegend    = False,
     )
     return fig
 
@@ -874,27 +870,30 @@ try:
                                  family="Malgun Gothic, AppleGothic, sans-serif"),
         ))
         fig_bar.update_layout(
-            title=dict(
-                text="<b>품목별 총 매출 차이</b>",
-                font=dict(size=14, color="#0d1f3c"),
-                x=0.01, xanchor="left",
+            title_text        = "품목별 총 매출 차이",
+            title_font_size   = 14,
+            title_font_color  = "#0d1f3c",
+            title_x           = 0.01,
+            height            = max(380, len(va_bar) * 40),
+            margin            = dict(l=10, r=140, t=50, b=30),
+            plot_bgcolor      = "#fafbfd",
+            paper_bgcolor     = "#ffffff",
+            font              = dict(family="Malgun Gothic, AppleGothic, sans-serif"),
+            xaxis             = dict(
+                title         = "원화 매출 차이 (₩)",
+                title_font    = dict(size=11, color="#3a4a65"),
+                tickfont      = dict(size=11, color="#3a4a65"),
+                gridcolor     = "#e8ecf3",
+                gridwidth     = 1,
+                zeroline      = True,
+                zerolinecolor = "#5a6a85",
+                zerolinewidth = 2,
             ),
-            height        = max(380, len(va_bar) * 40),
-            margin        = dict(l=10, r=140, t=50, b=30),
-            xaxis         = dict(
-                title     = "원화 매출 차이 (₩)",
-                titlefont = dict(size=11, color="#3a4a65"),
-                tickfont  = dict(size=11, color="#3a4a65"),
-                gridcolor = "#e8ecf3", gridwidth=1,
-                zeroline  = True, zerolinecolor="#5a6a85", zerolinewidth=2,
+            yaxis             = dict(
+                tickfont      = dict(size=12, color="#0d1f3c",
+                                     family="Malgun Gothic, AppleGothic"),
+                automargin    = True,
             ),
-            yaxis         = dict(
-                tickfont  = dict(size=12, color="#0d1f3c", family="Malgun Gothic, AppleGothic"),
-                automargin= True,
-            ),
-            plot_bgcolor  = "#fafbfd",
-            paper_bgcolor = "#ffffff",
-            font          = dict(family="Malgun Gothic, AppleGothic, sans-serif"),
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 

@@ -118,24 +118,44 @@ def load_excel(file_bytes, file_name):
 # 집계 공통 함수
 # ══════════════════════════════════════════════════════════════════════════════
 def aggregate(df):
-    """품목명 기준 집계 → Q, P_fx(외화단가), P_krw(원화단가), ER, 원화매출"""
+    """
+    품목명 기준 집계.
+    반환 컬럼:
+      Q       : 총 수량
+      P_fx    : 가중평균 외화단가  (KRW 품목은 원화단가, 단 is_krw=True 로 표시)
+      P_krw   : 가중평균 원화단가
+      ER      : 평균 환율          (KRW 품목은 NaN → 환율차이 계산 제외 표시용)
+      원화매출 : 원화 매출 합계
+      is_krw  : 품목 전체가 KRW 거래인지 여부 (True이면 환율차이 = 0)
+    """
     if df.empty:
-        return pd.DataFrame(columns=["품목명", "Q", "P_fx", "P_krw", "ER", "원화매출"])
-    g = df.copy()
-    is_krw = g["환종"].str.strip().str.upper() == "KRW"
-    g["ER_adj"]   = np.where(is_krw, 1.0, g["환율"])
-    g["P_fx_adj"] = np.where(is_krw, g["원화단가"], g["외화단가"])  # KRW면 외화단가=원화단가
-    g["P_krw_adj"]= g["원화단가"]
+        return pd.DataFrame(columns=["품목명","Q","P_fx","P_krw","ER","원화매출","is_krw"])
 
-    grp  = g.groupby("품목명")
-    Q    = grp["수량"].sum()
-    PfxQ = grp.apply(lambda x: (x["P_fx_adj"]  * x["수량"]).sum())
-    PkwQ = grp.apply(lambda x: (x["P_krw_adj"] * x["수량"]).sum())
-    P_fx = (PfxQ / Q.replace(0, np.nan)).fillna(0)
-    P_krw= (PkwQ / Q.replace(0, np.nan)).fillna(0)
-    ER   = grp["ER_adj"].mean()
-    rev  = grp["원화금액"].sum()
-    return pd.DataFrame({"Q": Q, "P_fx": P_fx, "P_krw": P_krw, "ER": ER, "원화매출": rev}).reset_index()
+    g = df.copy()
+    g["_is_krw"] = g["환종"].str.strip().str.upper() == "KRW"
+    # 외화단가: KRW 거래는 원화단가를 외화단가로 간주 (환율=1이므로 동일)
+    g["P_fx_adj"]  = np.where(g["_is_krw"], g["원화단가"], g["외화단가"])
+    g["P_krw_adj"] = g["원화단가"]
+    # 환율: KRW 거래는 NaN (집계 후 환율차이 계산에서 0 처리)
+    g["ER_adj"] = np.where(g["_is_krw"], np.nan, g["환율"])
+
+    grp   = g.groupby("품목명")
+    Q     = grp["수량"].sum()
+    PfxQ  = grp.apply(lambda x: (x["P_fx_adj"]  * x["수량"]).sum())
+    PkwQ  = grp.apply(lambda x: (x["P_krw_adj"] * x["수량"]).sum())
+    P_fx  = (PfxQ / Q.replace(0, np.nan)).fillna(0)
+    P_krw = (PkwQ / Q.replace(0, np.nan)).fillna(0)
+    # 환율 평균: KRW 전용 품목이면 NaN 유지 (mean은 NaN 무시 → 외화 포함 시 외화환율만 평균)
+    ER    = grp["ER_adj"].mean()   # 품목이 KRW 전용이면 NaN
+    rev   = grp["원화금액"].sum()
+    # 품목 내 모든 행이 KRW인지 여부
+    is_krw_flag = grp["_is_krw"].all()
+
+    result = pd.DataFrame({
+        "Q": Q, "P_fx": P_fx, "P_krw": P_krw,
+        "ER": ER, "원화매출": rev, "is_krw": is_krw_flag
+    }).reset_index()
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -144,19 +164,54 @@ def aggregate(df):
 def model_A(base_df, curr_df):
     """
     원인별 임팩트 분석 — 재무/감사용 표준 모델
-    ① 수량 차이 : (Q1−Q0) × P0_fx × ER0
-    ② 단가 차이 : (P1_fx−P0_fx) × Q1 × ER0
-    ③ 환율 차이 : (ER1−ER0) × Q1 × P1_fx
-    검증: ①+②+③ = 총차이 (항등식)
-    """
-    b = aggregate(base_df).rename(columns={"Q":"Q0","P_fx":"P0_fx","P_krw":"P0_krw","ER":"ER0","원화매출":"매출0"})
-    c = aggregate(curr_df).rename(columns={"Q":"Q1","P_fx":"P1_fx","P_krw":"P1_krw","ER":"ER1","원화매출":"매출1"})
-    m = pd.merge(b, c, on="품목명", how="outer").fillna(0)
 
-    m["수량차이"] = (m["Q1"]    - m["Q0"])    * m["P0_fx"] * m["ER0"]
-    m["단가차이"] = (m["P1_fx"] - m["P0_fx"]) * m["Q1"]    * m["ER0"]
-    m["환율차이"] = (m["ER1"]   - m["ER0"])   * m["Q1"]    * m["P1_fx"]
-    m["총차이"]   = m["매출1"]  - m["매출0"]
+    외화(USD 등) 품목:
+      ① 수량 차이 : (Q1−Q0) × P0_fx × ER0
+      ② 단가 차이 : (P1_fx−P0_fx) × Q1 × ER0
+      ③ 환율 차이 : (ER1−ER0) × Q1 × P1_fx
+
+    KRW 품목 (환율차이 = 0):
+      ① 수량 차이 : (Q1−Q0) × P0_krw          ← ER=1 이므로 ×1 생략
+      ② 단가 차이 : (P1_krw−P0_krw) × Q1      ← ER=1 이므로 ×1 생략
+      ③ 환율 차이 : 0                           ← 환율 개념 없음
+    """
+    b = aggregate(base_df).rename(columns={
+        "Q":"Q0","P_fx":"P0_fx","P_krw":"P0_krw",
+        "ER":"ER0","원화매출":"매출0","is_krw":"is_krw0"
+    })
+    c = aggregate(curr_df).rename(columns={
+        "Q":"Q1","P_fx":"P1_fx","P_krw":"P1_krw",
+        "ER":"ER1","원화매출":"매출1","is_krw":"is_krw1"
+    })
+    m = pd.merge(b, c, on="품목명", how="outer")
+
+    # 숫자 컬럼만 fillna(0), bool 컬럼은 별도 처리
+    num_cols  = ["Q0","P0_fx","P0_krw","ER0","매출0","Q1","P1_fx","P1_krw","ER1","매출1"]
+    bool_cols = ["is_krw0","is_krw1"]
+    m[num_cols]  = m[num_cols].fillna(0)
+    m[bool_cols] = m[bool_cols].fillna(False)
+
+    # 기준·실적 중 하나라도 KRW이면 해당 품목은 KRW 처리
+    m["is_krw"] = m["is_krw0"] | m["is_krw1"]
+
+    def calc_row(row):
+        if row["is_krw"]:
+            # KRW: 환율 개념 없음 → 원화단가·원화매출 기준, 환율차이=0
+            qty   = (row["Q1"]     - row["Q0"])     * row["P0_krw"]
+            price = (row["P1_krw"] - row["P0_krw"]) * row["Q1"]
+            fx    = 0.0
+        else:
+            # 외화
+            qty   = (row["Q1"]    - row["Q0"])    * row["P0_fx"] * row["ER0"]
+            price = (row["P1_fx"] - row["P0_fx"]) * row["Q1"]   * row["ER0"]
+            fx    = (row["ER1"]   - row["ER0"])   * row["Q1"]   * row["P1_fx"]
+        return pd.Series({"수량차이": qty, "단가차이": price, "환율차이": fx})
+
+    variances     = m.apply(calc_row, axis=1)
+    m["수량차이"] = variances["수량차이"]
+    m["단가차이"] = variances["단가차이"]
+    m["환율차이"] = variances["환율차이"]
+    m["총차이"]   = m["매출1"] - m["매출0"]
     return m
 
 
@@ -166,43 +221,63 @@ def model_A(base_df, curr_df):
 def model_B(base_df, curr_df):
     """
     활동별 증분 분석 — 영업/전략 보고용 모델
-    A. 수량 차이 (Volume Incremental):
-       Q↑ → (Q1−Q0) × P1_krw   (현재 원화단가 적용, 현재가치로 평가)
-       Q↓ → (Q1−Q0) × P0_krw   (과거 원화단가 적용, 잃어버린 가치)
-    B. 환율 차이 (FX Exposure): P/Q 방향에 따라 가중치 분기
-       P↑,Q↑ → (ER1−ER0) × Q0 × P1_fx
-       P↑,Q↓ → (ER1−ER0) × Q1 × P1_fx
-       P↓,Q↑ → (ER1−ER0) × Q0 × P0_fx
-       P↓,Q↓ → (ER1−ER0) × Q1 × P0_fx
-    C. 단가 차이 (Negotiation Residual):
-       총차이 − 수량차이 − 환율차이
+
+    외화(USD 등) 품목:
+      A. 수량 차이 : Q↑→(Q1−Q0)×P1_krw / Q↓→(Q1−Q0)×P0_krw
+      B. 환율 차이 : P/Q 방향 4-Case 분기
+      C. 단가 차이 : 총차이 − ① − ③  (Residual)
+
+    KRW 품목 (환율차이 = 0):
+      A. 수량 차이 : Q↑→(Q1−Q0)×P1_krw / Q↓→(Q1−Q0)×P0_krw  (동일)
+      B. 환율 차이 : 0                                          ← 환율 개념 없음
+      C. 단가 차이 : 총차이 − ①  (=원화단가 변동분)
     """
-    b = aggregate(base_df).rename(columns={"Q":"Q0","P_fx":"P0_fx","P_krw":"P0_krw","ER":"ER0","원화매출":"매출0"})
-    c = aggregate(curr_df).rename(columns={"Q":"Q1","P_fx":"P1_fx","P_krw":"P1_krw","ER":"ER1","원화매출":"매출1"})
-    m = pd.merge(b, c, on="품목명", how="outer").fillna(0)
+    b = aggregate(base_df).rename(columns={
+        "Q":"Q0","P_fx":"P0_fx","P_krw":"P0_krw",
+        "ER":"ER0","원화매출":"매출0","is_krw":"is_krw0"
+    })
+    c = aggregate(curr_df).rename(columns={
+        "Q":"Q1","P_fx":"P1_fx","P_krw":"P1_krw",
+        "ER":"ER1","원화매출":"매출1","is_krw":"is_krw1"
+    })
+    m = pd.merge(b, c, on="품목명", how="outer")
 
-    # A. 수량 차이
-    def qty_var(row):
-        if row["Q1"] >= row["Q0"]:
-            return (row["Q1"] - row["Q0"]) * row["P1_krw"]   # 수량 증가: 현재 원화단가
+    num_cols  = ["Q0","P0_fx","P0_krw","ER0","매출0","Q1","P1_fx","P1_krw","ER1","매출1"]
+    bool_cols = ["is_krw0","is_krw1"]
+    m[num_cols]  = m[num_cols].fillna(0)
+    m[bool_cols] = m[bool_cols].fillna(False)
+    m["is_krw"]  = m["is_krw0"] | m["is_krw1"]
+
+    def calc_row(row):
+        q_up   = row["Q1"]    >= row["Q0"]
+        p_up   = row["P1_fx"] >= row["P0_fx"]
+        dER    = row["ER1"]   -  row["ER0"]
+
+        # A. 수량 차이 (KRW·외화 공통: 원화단가 기준)
+        qty = ((row["Q1"] - row["Q0"]) * row["P1_krw"] if q_up
+               else (row["Q1"] - row["Q0"]) * row["P0_krw"])
+
+        if row["is_krw"]:
+            # KRW: 환율차이 = 0, 단가차이 = 잔여
+            fx    = 0.0
+            total = row["매출1"] - row["매출0"]
+            price = total - qty
         else:
-            return (row["Q1"] - row["Q0"]) * row["P0_krw"]   # 수량 감소: 과거 원화단가
-    m["수량차이"] = m.apply(qty_var, axis=1)
+            # 외화: 4-Case 환율 분기
+            if   p_up and     q_up:  fx = dER * row["Q0"] * row["P1_fx"]
+            elif p_up and not q_up:  fx = dER * row["Q1"] * row["P1_fx"]
+            elif not p_up and q_up:  fx = dER * row["Q0"] * row["P0_fx"]
+            else:                    fx = dER * row["Q1"] * row["P0_fx"]
+            total = row["매출1"] - row["매출0"]
+            price = total - qty - fx
 
-    # B. 환율 차이
-    def fx_var(row):
-        p_up = row["P1_fx"] >= row["P0_fx"]
-        q_up = row["Q1"]    >= row["Q0"]
-        der  = row["ER1"] - row["ER0"]
-        if   p_up and     q_up:  return der * row["Q0"] * row["P1_fx"]
-        elif p_up and not q_up:  return der * row["Q1"] * row["P1_fx"]
-        elif not p_up and q_up:  return der * row["Q0"] * row["P0_fx"]
-        else:                    return der * row["Q1"] * row["P0_fx"]
-    m["환율차이"] = m.apply(fx_var, axis=1)
+        return pd.Series({"수량차이": qty, "단가차이": price, "환율차이": fx})
 
-    # C. 단가 차이 = 잔여 (총차이 − 수량 − 환율)
+    variances     = m.apply(calc_row, axis=1)
+    m["수량차이"] = variances["수량차이"]
+    m["단가차이"] = variances["단가차이"]
+    m["환율차이"] = variances["환율차이"]
     m["총차이"]   = m["매출1"] - m["매출0"]
-    m["단가차이"] = m["총차이"] - m["수량차이"] - m["환율차이"]
     return m
 
 
@@ -261,11 +336,18 @@ def render_waterfall(total_base, qty_v, price_v, fx_v, total_curr, base_label, c
 
 
 def build_table(va_filtered, base_label, curr_label, show_detail):
-    display_cols = ["품목명", "매출0", "매출1", "총차이", "수량차이", "단가차이", "환율차이"]
+    display_cols = ["품목명", "is_krw", "매출0", "매출1", "총차이", "수량차이", "단가차이", "환율차이"]
     if show_detail:
         extra = [c for c in ["Q0","Q1","P0_fx","P1_fx","P0_krw","P1_krw","ER0","ER1"] if c in va_filtered.columns]
         display_cols += extra
     va_d = va_filtered[[c for c in display_cols if c in va_filtered.columns]].copy().sort_values("총차이")
+
+    # KRW 품목의 환율차이를 NaN으로 → 테이블에서 "-" 표시
+    va_d.loc[va_d["is_krw"] == True, "환율차이"] = np.nan
+
+    # is_krw 컬럼 제거 (표시 불필요)
+    va_d = va_d.drop(columns=["is_krw"], errors="ignore")
+
     rename_map = {
         "매출0":    f"기준매출(원) [{base_label}]",
         "매출1":    f"실적매출(원) [{curr_label}]",
@@ -279,14 +361,23 @@ def build_table(va_filtered, base_label, curr_label, show_detail):
         "ER0":"기준환율","ER1":"실적환율",
     }
     va_d = va_d.rename(columns=rename_map)
+
     money_cols = [
         f"기준매출(원) [{base_label}]", f"실적매출(원) [{curr_label}]",
         "총차이(원)","①수량차이(원)","②단가차이(원)","③환율차이(원)",
         "기준수량","실적수량","기준외화단가","실적외화단가","기준원화단가","실적원화단가",
     ]
-    # 합계 행
-    total_row = {c: (va_d[c].sum() if c in money_cols else ("【 합 계 】" if c == "품목명" else ""))
-                 for c in va_d.columns}
+
+    # 합계 행: 환율차이는 NaN이 섞여 있으므로 skipna=True 로 합산 (KRW 제외한 외화분만 합산)
+    total_row = {}
+    for col in va_d.columns:
+        if col in money_cols:
+            total_row[col] = va_d[col].sum(skipna=True)
+        elif col == "품목명":
+            total_row[col] = "【 합 계 】"
+        else:
+            total_row[col] = ""
+
     va_d_total = pd.concat([va_d, pd.DataFrame([total_row])], ignore_index=True)
     return va_d_total, money_cols
 
@@ -538,7 +629,11 @@ total_curr = va_filtered["매출1"].sum()
 total_diff = va_filtered["총차이"].sum()
 qty_v      = va_filtered["수량차이"].sum()
 price_v    = va_filtered["단가차이"].sum()
+# 환율차이: KRW 품목은 0이므로 skipna 없이 sum → 외화 품목만 합산됨
 fx_v       = va_filtered["환율차이"].sum()
+
+# KRW 전용 선택 여부 (환율차이 KPI 표시 조절용)
+all_krw_selected = va_filtered["is_krw"].all() if "is_krw" in va_filtered.columns else False
 
 k1, k2, k3 = st.columns(3)
 k4, k5, k6 = st.columns(3)
@@ -550,11 +645,17 @@ kpi_card(k3, "총 차이 (실적 − 기준)", "①+②+③ 합계", total_diff)
 if is_model_A:
     kpi_card(k4, "① 수량 차이", "(Q1−Q0)×P0_fx×ER0", qty_v)
     kpi_card(k5, "② 단가 차이", "(P1−P0)×Q1×ER0", price_v)
-    kpi_card(k6, "③ 환율 차이", "(ER1−ER0)×Q1×P1_fx", fx_v)
+    if all_krw_selected:
+        k6.markdown('<div class="kpi-card"><div class="kpi-label">③ 환율 차이</div><div class="kpi-formula">(ER1−ER0)×Q1×P1_fx</div><div class="kpi-value" style="color:#aaa;">— KRW 해당없음</div></div>', unsafe_allow_html=True)
+    else:
+        kpi_card(k6, "③ 환율 차이", "(ER1−ER0)×Q1×P1_fx", fx_v)
 else:
     kpi_card(k4, "① 수량 차이 (Volume Incremental)", "Q↑→×P1_krw / Q↓→×P0_krw", qty_v)
     kpi_card(k5, "② 단가 차이 (Negotiation Residual)", "총차이 − ① − ③", price_v)
-    kpi_card(k6, "③ 환율 차이 (FX Exposure)", "P/Q 방향 4-Case 분기", fx_v)
+    if all_krw_selected:
+        k6.markdown('<div class="kpi-card"><div class="kpi-label">③ 환율 차이 (FX Exposure)</div><div class="kpi-formula">P/Q 방향 4-Case 분기</div><div class="kpi-value" style="color:#aaa;">— KRW 해당없음</div></div>', unsafe_allow_html=True)
+    else:
+        kpi_card(k6, "③ 환율 차이 (FX Exposure)", "P/Q 방향 4-Case 분기", fx_v)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 상세 테이블

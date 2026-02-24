@@ -584,66 +584,68 @@ with st.sidebar:
         st.markdown("---")
         st.markdown("### 🧮 분석 모델 선택")
 
+        # 모델 A 박스 + 선택 버튼
         st.markdown("""
         <div class="model-card model-card-A">
             <div class="model-title-A">📐 모델 A — 원인별 임팩트 분석</div>
             <div class="model-desc">
                 변수 간 간섭을 완전히 제거하여<br>
                 각 요인의 <b>절대적 영향력</b>을 측정.<br>
-                ①+②+③ = 총차이 항등식 보장.<br>
-                <b style="color:#1f3864">✔ 재무·감사·외부보고 표준</b>
+                <br>
+                ① 수량차이: (Q1−Q0)×<b>P0_fx</b>×<b>ER0</b><br>
+                ② 단가차이: (P1−P0)×<b>Q1</b>×<b>ER0</b><br>
+                ③ 환율차이: (ER1−ER0)×<b>Q1</b>×<b>P1_fx</b><br>
+                <br>
+                ①+②+③ = 총차이 <b>항등식 보장</b><br>
+                <b style="color:#1e3a6e">✔ 재무·감사·외부보고 표준</b>
             </div>
-            <span class="model-tag tag-A">수량↓ = 전년단가 적용</span>
-        </div>
-        <div class="model-card model-card-B" style="margin-top:8px;">
-            <div class="model-title-B">📈 모델 B — 활동별 증분 분석</div>
-            <div class="model-desc">
-                영업 활동(단가협상·물량확보)의<br>
-                <b>실질적 비즈니스 가치</b>를 평가.<br>
-                단가차이 = 잔여(총차이−①−③) 방식.<br>
-                <b style="color:#8b4c0a">✔ 영업·전략·내부경영 보고</b>
-            </div>
-            <span class="model-tag tag-B">수량↑ = 현재단가 적용</span>
+            <span class="model-tag tag-A">수량↑↓ 모두 전년 외화단가 적용</span>
         </div>
         """, unsafe_allow_html=True)
+        sel_A = st.button("✔ 모델 A 선택", key="sel_model_A", use_container_width=True)
 
-        analysis_model = st.radio(
-            "모델 선택",
-            ["모델 A — 원인별 임팩트 분석", "모델 B — 활동별 증분 분석"],
-            index=0,
-            label_visibility="collapsed",
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+        # 모델 B 박스 + 선택 버튼
+        st.markdown("""
+        <div class="model-card model-card-B">
+            <div class="model-title-B">📈 모델 B — 활동별 증분 분석</div>
+            <div class="model-desc">
+                영업 활동의 <b>실질적 비즈니스 가치</b>를 평가.<br>
+                상황(Case)에 따라 가중치를 다르게 적용.<br>
+                <br>
+                ① 수량차이: Q↑→×<b>P1_krw</b> / Q↓→×<b>P0_krw</b><br>
+                ② 단가차이: <b>총차이 − ① − ③</b> (잔여값)<br>
+                ③ 환율차이: P/Q 방향 <b>4-Case 분기</b><br>
+                <br>
+                ①+②+③ = 총차이 <b>항등식 보장</b><br>
+                <b style="color:#7a3300">✔ 영업·전략·내부경영 보고</b>
+            </div>
+            <span class="model-tag tag-B">수량↑ = 현재 원화단가 / 수량↓ = 전년 원화단가</span>
+        </div>
+        """, unsafe_allow_html=True)
+        sel_B = st.button("✔ 모델 B 선택", key="sel_model_B", use_container_width=True)
+
+        # session_state 로 선택 모델 유지
+        if "analysis_model" not in st.session_state:
+            st.session_state.analysis_model = "모델 A — 원인별 임팩트 분석"
+        if sel_A:
+            st.session_state.analysis_model = "모델 A — 원인별 임팩트 분석"
+            st.rerun()
+        if sel_B:
+            st.session_state.analysis_model = "모델 B — 활동별 증분 분석"
+            st.rerun()
+
+        analysis_model = st.session_state.analysis_model
+
+        # 현재 선택된 모델 표시
+        is_A_active = "모델 A" in analysis_model
+        st.markdown(
+            f'<div style="text-align:center; padding:5px 0; font-size:0.8rem; font-weight:700; '
+            f'color:{"#1e3a6e" if is_A_active else "#7a3300"};">'
+            f'현재 선택: {"📐 모델 A" if is_A_active else "📈 모델 B"}</div>',
+            unsafe_allow_html=True
         )
-
-        st.markdown("---")
-
-        # 모델별 특징 요약 표
-        with st.expander("📊 두 모델 비교표"):
-            cmp = pd.DataFrame({
-                "항목": ["목적","수량차이 공식","단가차이 공식","환율차이 공식","수량↑ 시 단가 기준","수량↓ 시 단가 기준","단가차이 도출 방식","①+②+③=총차이","주요 용도"],
-                "모델 A": [
-                    "절대 원인 측정",
-                    "(Q1−Q0)×P0_fx×ER0",
-                    "(P1−P0)×Q1×ER0",
-                    "(ER1−ER0)×Q1×P1_fx",
-                    "전년 외화단가",
-                    "전년 외화단가",
-                    "직접 계산",
-                    "✅ 항상 성립",
-                    "재무·감사·외부보고",
-                ],
-                "모델 B": [
-                    "실질 가치 평가",
-                    "Q↑: (Q1−Q0)×P1_krw",
-                    "총차이−수량−환율",
-                    "P/Q 방향 4-Case 분기",
-                    "당해 원화단가",
-                    "전년 원화단가",
-                    "잔여(Residual)",
-                    "✅ 항상 성립",
-                    "영업·전략·내부경영",
-                ],
-            })
-            st.dataframe(cmp, use_container_width=True, hide_index=True)
 
         st.markdown("---")
         st.markdown("### ⚙️ 표시 설정")
@@ -657,7 +659,9 @@ with st.sidebar:
         base_label = curr_label = ""
         df_base = df_curr = None
         show_detail = False
-        analysis_model = "모델 A — 원인별 임팩트 분석"
+        if "analysis_model" not in st.session_state:
+            st.session_state.analysis_model = "모델 A — 원인별 임팩트 분석"
+        analysis_model = st.session_state.analysis_model
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -923,10 +927,8 @@ st.download_button(
 
 # ── 원본 데이터 ───────────────────────────────────────────────────────────────
 with st.expander("🗂️ 원본 데이터 확인 (선택 품목 기준)"):
-    # 현재 선택된 품목으로만 필터
     raw_base = df_base[df_base["품목명"].isin(selected_items)].reset_index(drop=True)
     raw_curr = df_curr[df_curr["품목명"].isin(selected_items)].reset_index(drop=True)
-
     t1, t2 = st.tabs([
         f"기준 ({base_label}) · {len(raw_base):,}건",
         f"실적 ({curr_label}) · {len(raw_curr):,}건",
@@ -941,3 +943,169 @@ with st.expander("🗂️ 원본 데이터 확인 (선택 품목 기준)"):
             st.info("선택된 품목의 실적 기간 데이터가 없습니다.")
         else:
             st.dataframe(raw_curr, use_container_width=True, height=280)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 두 모델 상세 비교표
+# ══════════════════════════════════════════════════════════════════════════════
+st.markdown('<div class="section-header">📖 분석 모델 상세 비교</div>', unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+.cmp-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 0.83rem; font-family: 'Malgun Gothic', 'AppleGothic', sans-serif;
+}
+.cmp-table th {
+    padding: 10px 14px; text-align: center; font-weight: 800;
+    border-bottom: 3px solid #1e3a6e;
+}
+.cmp-table th.hdr-item  { background: #1e3a6e; color: white; width: 18%; }
+.cmp-table th.hdr-A     { background: #2d5faa; color: white; width: 41%; }
+.cmp-table th.hdr-B     { background: #c9641a; color: white; width: 41%; }
+.cmp-table td {
+    padding: 9px 14px; vertical-align: top;
+    border-bottom: 1px solid #dde3ef; line-height: 1.6;
+}
+.cmp-table tr:nth-child(even) td { background: #f7f9ff; }
+.cmp-table tr:nth-child(odd)  td { background: #ffffff; }
+.cmp-table td.cat {
+    font-weight: 800; color: #1e3a6e; background: #eef3fb !important;
+    text-align: center; white-space: nowrap;
+}
+.cmp-table td.val-A { color: #1e3a6e; }
+.cmp-table td.val-B { color: #6b2d00; }
+.formula {
+    font-family: 'Courier New', monospace; font-size: 0.78rem;
+    background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 3px;
+    display: inline-block; margin: 1px 0;
+}
+.tag-good { display:inline-block; background:#1a7a4a; color:white;
+            font-size:0.68rem; font-weight:700; border-radius:3px; padding:1px 6px; }
+.tag-warn { display:inline-block; background:#c9641a; color:white;
+            font-size:0.68rem; font-weight:700; border-radius:3px; padding:1px 6px; }
+.tag-info { display:inline-block; background:#2d5faa; color:white;
+            font-size:0.68rem; font-weight:700; border-radius:3px; padding:1px 6px; }
+</style>
+
+<table class="cmp-table">
+<thead>
+  <tr>
+    <th class="hdr-item">비교 항목</th>
+    <th class="hdr-A">📐 모델 A — 원인별 임팩트 분석</th>
+    <th class="hdr-B">📈 모델 B — 활동별 증분 분석</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td class="cat">분석 목적</td>
+    <td class="val-A">각 변수(수량·단가·환율)가 매출 총차이에 미친 <b>절대적·독립적 영향력</b>을 측정</td>
+    <td class="val-B">영업 부서의 의사결정(단가협상·물량확보)이 만들어낸 <b>실질적 비즈니스 가치</b>를 평가</td>
+  </tr>
+  <tr>
+    <td class="cat">분석 철학</td>
+    <td class="val-A">변수 간 <b>상호작용을 완전히 제거</b>하여 순수한 원인 규명에 집중 (재무공학적 접근)</td>
+    <td class="val-B">실제 비즈니스 상황(단가↑↓, 수량↑↓)에 따라 가중치를 달리하는 <b>맥락 반영형</b> 접근</td>
+  </tr>
+  <tr>
+    <td class="cat">① 수량차이<br>공식</td>
+    <td class="val-A">
+      <span class="formula">(Q1 − Q0) × P0_fx × ER0</span><br>
+      수량 변화분에 전년 외화단가·전년 환율을 일괄 적용.<br>
+      수량 증감과 관계없이 <b>동일한 단가 기준 유지</b>
+    </td>
+    <td class="val-B">
+      수량 증가 시: <span class="formula">(Q1 − Q0) × P1_krw</span><br>
+      수량 감소 시: <span class="formula">(Q1 − Q0) × P0_krw</span><br>
+      <b>증가분은 현재가치, 감소분은 손실가치</b>로 평가
+    </td>
+  </tr>
+  <tr>
+    <td class="cat">② 단가차이<br>공식</td>
+    <td class="val-A">
+      <span class="formula">(P1_fx − P0_fx) × Q1 × ER0</span><br>
+      실적 수량에 전년 환율 고정 → 순수 단가 변동 효과만 측정
+    </td>
+    <td class="val-B">
+      <span class="formula">총차이 − ①수량차이 − ③환율차이</span><br>
+      수량·환율 요인을 먼저 확정한 후 <b>잔여(Residual)</b>로 산출.<br>
+      협상 결과를 최종적으로 반영
+    </td>
+  </tr>
+  <tr>
+    <td class="cat">③ 환율차이<br>공식</td>
+    <td class="val-A">
+      <span class="formula">(ER1 − ER0) × Q1 × P1_fx</span><br>
+      실적 수량·실적 외화단가를 고정하여 <b>환율 변동 효과만</b> 순수 측정
+    </td>
+    <td class="val-B">
+      P↑, Q↑: <span class="formula">(ER1−ER0) × Q0 × P1_fx</span><br>
+      P↑, Q↓: <span class="formula">(ER1−ER0) × Q1 × P1_fx</span><br>
+      P↓, Q↑: <span class="formula">(ER1−ER0) × Q0 × P0_fx</span><br>
+      P↓, Q↓: <span class="formula">(ER1−ER0) × Q1 × P0_fx</span>
+    </td>
+  </tr>
+  <tr>
+    <td class="cat">KRW 품목<br>처리</td>
+    <td class="val-A">환율차이 = 0 (KRW는 환율 변동 없음)<br>수량·단가 차이는 <b>원화단가 기준</b>으로 계산</td>
+    <td class="val-B">환율차이 = 0 (동일)<br>수량·단가 차이는 <b>원화단가 기준</b>으로 계산 (동일)</td>
+  </tr>
+  <tr>
+    <td class="cat">항등식<br>성립 여부</td>
+    <td class="val-A"><span class="tag-good">✅ 항상 성립</span><br>①+②+③ = 총차이 (수학적 항등)</td>
+    <td class="val-B"><span class="tag-good">✅ 항상 성립</span><br>단가차이를 잔여로 정의하므로 설계상 보장</td>
+  </tr>
+  <tr>
+    <td class="cat">수량↑ 시<br>단가 기준</td>
+    <td class="val-A"><span class="tag-info">전년 외화단가</span><br>보수적 평가 — 물량 성과를 과거 가치로 인정</td>
+    <td class="val-B"><span class="tag-warn">당해 원화단가</span><br>낙관적 평가 — 새로 판 물건은 현재 가격으로 입금</td>
+  </tr>
+  <tr>
+    <td class="cat">수량↓ 시<br>단가 기준</td>
+    <td class="val-A"><span class="tag-info">전년 외화단가</span><br>잃어버린 수량을 과거 가격 기준의 손실로 계산</td>
+    <td class="val-B"><span class="tag-info">전년 원화단가</span><br>잃어버린 수량을 과거 가격 기준의 손실로 계산</td>
+  </tr>
+  <tr>
+    <td class="cat">장점</td>
+    <td class="val-A">
+      · 결과 재현 가능 — 동일 조건이면 항상 동일 결과<br>
+      · 변수 간 교차항 없이 순수 원인 분리<br>
+      · 감사·외부 보고 시 논리적 방어 용이
+    </td>
+    <td class="val-B">
+      · 영업 현장의 가치 창출을 현실적으로 반영<br>
+      · 수량 증가 시 현재가 적용으로 성과 인센티브 연계 가능<br>
+      · 경영진 의사결정 직관에 부합
+    </td>
+  </tr>
+  <tr>
+    <td class="cat">단점 /</br>주의사항</td>
+    <td class="val-A">
+      · 수량 증가 성과를 전년 가격으로만 평가 → <b>영업 기여 과소평가</b> 가능<br>
+      · 단가·수량 간 실제 상관관계 무시
+    </td>
+    <td class="val-B">
+      · 단가차이가 잔여로 산출되어 <b>복잡한 상황에서 해석 주의</b><br>
+      · 4-Case 분기로 인해 Case 경계값에서 불연속 발생 가능
+    </td>
+  </tr>
+  <tr>
+    <td class="cat">주요 활용<br>용도</td>
+    <td class="val-A">
+      <span class="tag-info">재무제표 분석</span>&nbsp;
+      <span class="tag-info">외부감사</span>&nbsp;
+      <span class="tag-info">예산 대비 실적</span><br>
+      <span class="tag-info">원가 분석</span>&nbsp;
+      <span class="tag-info">표준원가 차이분석</span>
+    </td>
+    <td class="val-B">
+      <span class="tag-warn">영업 성과 평가</span>&nbsp;
+      <span class="tag-warn">전략 보고</span><br>
+      <span class="tag-warn">단가 협상 결과 측정</span>&nbsp;
+      <span class="tag-warn">내부경영 보고</span>
+    </td>
+  </tr>
+</tbody>
+</table>
+""", unsafe_allow_html=True)
+
+st.markdown("<br/>", unsafe_allow_html=True)

@@ -53,7 +53,7 @@ COL_IDX = {
 }
 
 # ── 공통 함수 ────────────────────────────────────────────────────────────────
-def load_excel(file) -> pd.DataFrame | None:
+def load_excel(file):
     """엑셀 파일을 읽어 표준 컬럼명으로 반환"""
     try:
         df_raw = pd.read_excel(file, header=0, dtype=str)
@@ -80,7 +80,7 @@ def load_excel(file) -> pd.DataFrame | None:
         return None
 
 
-def variance_analysis(base: pd.DataFrame, curr: pd.DataFrame, group_cols: list[str]) -> pd.DataFrame:
+def variance_analysis(base: pd.DataFrame, curr: pd.DataFrame, group_cols: list) -> pd.DataFrame:
     """
     차이 분석 (Price / Quantity / FX Variance)
     P = 외화단가, Q = 수량, ER = 환율
@@ -129,7 +129,7 @@ def color_val(val):
     return ""
 
 
-def styled_df(df: pd.DataFrame, money_cols: list[str]) -> pd.io.formats.style.Styler:
+def styled_df(df: pd.DataFrame, money_cols: list):
     """금액 컬럼에 색상 및 포맷 적용"""
     def color_neg(v):
         try:

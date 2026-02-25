@@ -978,69 +978,80 @@ try:
             # ── 품목별 구성요소 상세 ──────────────────────────────────────────
             st.markdown("**품목별 구성요소 상세**")
 
-            # va_filtered에는 집계된 컬럼이 있음
-            avail = va_filtered.columns.tolist()
             detail_raw = va_filtered.copy()
 
             # 품목별 항등식 검증 컬럼 추가
-            detail_raw["_check"] = (detail_raw["수량차이"] + detail_raw["단가차이"] + detail_raw["환율차이"]).round(0)
-            detail_raw["_total"] = detail_raw["총차이"].round(0)
+            detail_raw["검증"] = (detail_raw["수량차이"] + detail_raw["단가차이"] + detail_raw["환율차이"]).round(0)
             detail_raw["검증"] = detail_raw.apply(
-                lambda r: "✅" if abs(r["_check"] - r["_total"]) < 1 else f"⚠️ 오차 {r['_check']-r['_total']:+,.0f}",
+                lambda r: "✅" if abs(round(r["수량차이"] + r["단가차이"] + r["환율차이"]) - round(r["총차이"])) < 1
+                          else f"⚠️ 오차 {round(r['수량차이']+r['단가차이']+r['환율차이'])-round(r['총차이']):+,.0f}",
                 axis=1
             )
 
-            # 컬럼 구성: 품목명 | 실적매출/수량/단가/환율 | 기준매출/수량/단가/환율 | 차이항목들 | 검증
-            col_map = {
-                "품목명":   "품목명",
-                "매출1":    "실적매출(원)",
-                "Q1":       "실적수량",
-                "P1_krw":   "실적단가(원화)",
-                "P1_fx":    "실적단가(외화)",
-                "ER1":      "실적환율",
-                "매출0":    "기준매출(원)",
-                "Q0":       "기준수량",
-                "P0_krw":   "기준단가(원화)",
-                "P0_fx":    "기준단가(외화)",
-                "ER0":      "기준환율",
-                "총차이":   "총차이(원)",
-                "수량차이": "①수량차이(원)",
-                "단가차이": "②단가차이(원)",
-                "환율차이": "③환율차이(원)",
-                "검증":     "①+②+③=총차이",
-            }
-            sel_cols = [c for c in col_map.keys() if c in detail_raw.columns] + ["검증"]
-            detail_df = detail_raw[sel_cols].rename(columns=col_map).copy()
+            # 필요한 컬럼만 순서대로 선택 (col_map 키 = 원본명, 값 = 표시명)
+            col_map = [
+                ("품목명",   "품목명"),
+                ("매출1",    "실적매출(원)"),
+                ("Q1",       "실적수량"),
+                ("P1_krw",   "실적단가(원화)"),
+                ("P1_fx",    "실적단가(외화)"),
+                ("ER1",      "실적환율"),
+                ("매출0",    "기준매출(원)"),
+                ("Q0",       "기준수량"),
+                ("P0_krw",   "기준단가(원화)"),
+                ("P0_fx",    "기준단가(외화)"),
+                ("ER0",      "기준환율"),
+                ("총차이",   "총차이(원)"),
+                ("수량차이", "①수량차이(원)"),
+                ("단가차이", "②단가차이(원)"),
+                ("환율차이", "③환율차이(원)"),
+                ("검증",     "①+②+③=총차이"),
+            ]
 
-            # KRW 전용 품목 환율 표시: NaN → "-"
-            if "실적환율" in detail_df.columns:
-                detail_df["실적환율"] = detail_df["실적환율"].where(detail_df["실적환율"].notna(), other=None)
-            if "기준환율" in detail_df.columns:
-                detail_df["기준환율"] = detail_df["기준환율"].where(detail_df["기준환율"].notna(), other=None)
+            # 존재하는 컬럼만 필터링 (중복 없이)
+            seen = set()
+            sel_src, sel_dst = [], []
+            for src, dst in col_map:
+                if src in detail_raw.columns and src not in seen:
+                    seen.add(src)
+                    sel_src.append(src)
+                    sel_dst.append(dst)
 
-            # 합계 행 (숫자 컬럼만 합산)
-            num_cols_d = detail_df.select_dtypes(include="number").columns.tolist()
-            sum_vals = {c: detail_df[c].sum() for c in num_cols_d}
-            str_vals = {c: ("【합계】" if c == "품목명" else "") for c in detail_df.columns if c not in num_cols_d}
-            sum_row  = {**sum_vals, **str_vals}
-            detail_df = pd.concat([detail_df, pd.DataFrame([sum_row])], ignore_index=True)
+            detail_df = detail_raw[sel_src].copy()
+            detail_df.columns = sel_dst
 
-            # 숫자 포맷 (단가·환율은 소수점 2자리, 나머지는 정수)
+            # 숫자 컬럼 파악
+            num_cols_d = [c for c in detail_df.columns
+                          if c not in ("품목명", "①+②+③=총차이") and pd.api.types.is_numeric_dtype(detail_df[c])]
+
+            # 합계 행 — loc로 직접 추가 (pd.concat 중복 컬럼 문제 완전 회피)
+            sum_idx = len(detail_df)
+            detail_df.loc[sum_idx, "품목명"] = "【합 계】"
+            for c in num_cols_d:
+                detail_df.loc[sum_idx, c] = detail_df[c].sum()
+            detail_df.loc[sum_idx, "①+②+③=총차이"] = ""
+
+            # ER 컬럼: NaN은 "-" 포맷으로 표시
+            # 숫자 포맷 설정 (단가·환율은 소수점 2자리, 나머지 숫자는 정수)
             fmt = {}
-            for c in detail_df.columns:
+            for c in num_cols_d:
                 if any(kw in c for kw in ["단가", "환율"]):
                     fmt[c] = "{:,.2f}"
-                elif c in num_cols_d:
+                else:
                     fmt[c] = "{:,.0f}"
 
+            # 합계행 스타일 + 항등식 오류 행 강조
+            def row_style(row):
+                if row["품목명"] == "【합 계】":
+                    return ["font-weight:700; background-color:#f0f4ff"] * len(row)
+                if str(row.get("①+②+③=총차이", "")).startswith("⚠️"):
+                    return ["background-color:#fff3cd"] * len(row)
+                return [""] * len(row)
+
             st.dataframe(
-                detail_df.style.format(fmt, na_rep="-").apply(
-                    lambda row: [
-                        "background-color:#fff3cd;font-weight:700" if str(row.get("①+②+③=총차이","")).startswith("⚠️") else ""
-                        for _ in row
-                    ], axis=1
-                ),
-                use_container_width=True, hide_index=True
+                detail_df.style.format(fmt, na_rep="-").apply(row_style, axis=1),
+                use_container_width=True,
+                hide_index=True,
             )
 
     with tab_bar:

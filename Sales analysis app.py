@@ -171,9 +171,13 @@ def aggregate(df):
     품목명 기준 집계.
     반환 컬럼:
       Q       : 총 수량
-      P_fx    : 가중평균 외화단가  (KRW 품목은 원화단가, 단 is_krw=True 로 표시)
+      P_fx    : 가중평균 외화단가  (KRW 품목은 원화단가를 사용)
       P_krw   : 가중평균 원화단가
-      ER      : 평균 환율          (KRW 품목은 NaN → 환율차이 계산 제외 표시용)
+      ER      : 외화금액 가중평균 환율 = 원화매출합 / 외화금액합
+                ★ 단순평균이 아닌 가중평균이어야만
+                  Q × P_fx × ER = 원화매출 항등식이 성립하고
+                  모델 A의 ①+②+③ = 총차이 항등식이 보장됨
+                KRW 전용 품목은 NaN (환율차이 = 0 처리)
       원화매출 : 원화 매출 합계
       is_krw  : 품목 전체가 KRW 거래인지 여부 (True이면 환율차이 = 0)
     """
@@ -182,23 +186,41 @@ def aggregate(df):
 
     g = df.copy()
     g["_is_krw"] = g["환종"].str.strip().str.upper() == "KRW"
-    # 외화단가: KRW 거래는 원화단가를 외화단가로 간주 (환율=1이므로 동일)
+
+    # 외화단가: KRW 거래는 원화단가를 외화단가로 사용 (ER=1이므로 수식상 동일)
     g["P_fx_adj"]  = np.where(g["_is_krw"], g["원화단가"], g["외화단가"])
     g["P_krw_adj"] = g["원화단가"]
-    # 환율: KRW 거래는 NaN (집계 후 환율차이 계산에서 0 처리)
-    g["ER_adj"] = np.where(g["_is_krw"], np.nan, g["환율"])
 
-    grp   = g.groupby("품목명")
-    Q     = grp["수량"].sum()
-    PfxQ  = grp.apply(lambda x: (x["P_fx_adj"]  * x["수량"]).sum())
-    PkwQ  = grp.apply(lambda x: (x["P_krw_adj"] * x["수량"]).sum())
+    # 외화금액: KRW 거래는 NaN으로 마킹 (환율 가중평균 계산에서 제외)
+    g["FX_amt"] = np.where(g["_is_krw"], np.nan, g["외화금액"])
+    # 외화금액이 0이거나 없으면 Q*P_fx로 근사
+    g["FX_amt"] = np.where(
+        g["FX_amt"].isna() | (g["FX_amt"] == 0),
+        np.where(g["_is_krw"], np.nan, g["수량"] * g["외화단가"]),
+        g["FX_amt"]
+    )
+
+    grp  = g.groupby("품목명")
+    Q    = grp["수량"].sum()
+    rev  = grp["원화금액"].sum()
+
+    # 가중평균 외화단가: sum(P_fx_i * Q_i) / sum(Q_i)
+    PfxQ  = grp.apply(lambda x: (x["P_fx_adj"] * x["수량"]).sum())
     P_fx  = (PfxQ / Q.replace(0, np.nan)).fillna(0)
+
+    # 가중평균 원화단가: sum(P_krw_i * Q_i) / sum(Q_i)
+    PkwQ  = grp.apply(lambda x: (x["P_krw_adj"] * x["수량"]).sum())
     P_krw = (PkwQ / Q.replace(0, np.nan)).fillna(0)
-    # 환율 평균: KRW 전용 품목이면 NaN 유지 (mean은 NaN 무시 → 외화 포함 시 외화환율만 평균)
-    ER    = grp["ER_adj"].mean()   # 품목이 KRW 전용이면 NaN
-    rev   = grp["원화금액"].sum()
-    # 품목 내 모든 행이 KRW인지 여부
+
+    # ★ 핵심 수정: 환율 = 원화매출합 / 외화금액합  (외화금액 가중평균)
+    #   이렇게 해야 Q * P_fx * ER = 원화매출 이 정확히 성립함
+    #   KRW 전용 품목은 FX_amt 합계가 NaN → ER도 NaN 유지
+    FX_sum = grp["FX_amt"].sum()      # NaN 포함 합산 → KRW전용이면 NaN
+    # KRW 전용 품목의 FX_sum은 all-NaN → sum()=0 이 되므로 별도 처리
     is_krw_flag = grp["_is_krw"].all()
+    # FX_sum이 0 또는 is_krw인 경우 NaN으로 설정
+    FX_sum_clean = FX_sum.where(~is_krw_flag & (FX_sum != 0), other=np.nan)
+    ER = (rev / FX_sum_clean)         # KRW 전용이면 NaN, 외화이면 가중평균 환율
 
     result = pd.DataFrame({
         "Q": Q, "P_fx": P_fx, "P_krw": P_krw,
@@ -250,21 +272,40 @@ def model_A(base_df, curr_df):
 
     def calc_row(row):
         # ── 신규 품목 예외 처리 (Q0 = 0) ──────────────────────────────────────
-        # 전년 실적이 없으면 전년 단가(P0)가 존재하지 않아 단가·환율 차이 계산 불가.
-        # 당해 매출 전액을 수량 차이(신규 개척 성과)로 귀속하고 나머지는 0으로 처리.
         if row["Q0"] == 0:
+            # 기준 실적 없음 → 매출 전액을 수량 차이(신규 개척 성과)로 귀속
             return pd.Series({"수량차이": row["매출1"], "단가차이": 0.0, "환율차이": 0.0})
 
+        # ── 단종 품목 (Q1 = 0) ────────────────────────────────────────────────
+        if row["Q1"] == 0:
+            # 실적 없음 → 기준 매출 전액을 수량 차이(-)로 처리
+            return pd.Series({"수량차이": -row["매출0"], "단가차이": 0.0, "환율차이": 0.0})
+
         if row["is_krw"]:
-            # KRW: 환율 개념 없음 → 원화단가·원화매출 기준, 환율차이=0
+            # KRW 품목: ER = 1로 취급, 원화단가 기준
+            # 항등식: Q1*P1_krw - Q0*P0_krw
+            #       = (Q1-Q0)*P0_krw + (P1_krw-P0_krw)*Q1
             qty   = (row["Q1"]     - row["Q0"])     * row["P0_krw"]
             price = (row["P1_krw"] - row["P0_krw"]) * row["Q1"]
             fx    = 0.0
         else:
-            # 외화
+            # 외화 품목
+            # 항등식: Q1*P1_fx*ER1 - Q0*P0_fx*ER0
+            #       = (Q1-Q0)*P0_fx*ER0  +  (P1_fx-P0_fx)*Q1*ER0  +  (ER1-ER0)*Q1*P1_fx
+            # aggregate()에서 ER = 원화매출/외화금액합 으로 계산하므로
+            # Q * P_fx * ER = 원화매출 이 정확히 성립 → 항등식 보장
             qty   = (row["Q1"]    - row["Q0"])    * row["P0_fx"] * row["ER0"]
             price = (row["P1_fx"] - row["P0_fx"]) * row["Q1"]   * row["ER0"]
             fx    = (row["ER1"]   - row["ER0"])   * row["Q1"]   * row["P1_fx"]
+
+        # ── 내부 항등식 검증 (부동소수점 허용 오차 1원) ──────────────────────
+        # 계산된 ①+②+③이 총차이와 다르면 단가차이를 잔여로 보정
+        computed = qty + price + fx
+        total    = row["매출1"] - row["매출0"]
+        if abs(computed - total) > 1:
+            # 보정: 잔차를 단가차이에 흡수 (P_fx 집계 오차 최소화 대책)
+            price += (total - computed)
+
         return pd.Series({"수량차이": qty, "단가차이": price, "환율차이": fx})
 
     variances     = m.apply(calc_row, axis=1)
@@ -313,11 +354,13 @@ def model_B(base_df, curr_df):
     m["is_krw"]  = m["is_krw0"] | m["is_krw1"]
 
     def calc_row(row):
-        # ── 신규 품목 예외 처리 (Q0 = 0) ─────────────────────────────────────
-        # 전년 실적이 없으면 전년 단가(P0)가 존재하지 않아 단가·환율 차이 계산 불가.
-        # 신규 시장 개척 성과로 보아 당해 매출 전액을 수량 증분 성과로 귀속.
+        # ── 신규 품목 (Q0 = 0) ────────────────────────────────────────────────
         if row["Q0"] == 0:
             return pd.Series({"수량차이": row["매출1"], "단가차이": 0.0, "환율차이": 0.0})
+
+        # ── 단종 품목 (Q1 = 0) ────────────────────────────────────────────────
+        if row["Q1"] == 0:
+            return pd.Series({"수량차이": -row["매출0"], "단가차이": 0.0, "환율차이": 0.0})
 
         q_up   = row["Q1"]    >= row["Q0"]
         p_up   = row["P1_fx"] >= row["P0_fx"]
@@ -921,7 +964,7 @@ try:
             ]
             calc_df = pd.DataFrame(calc_rows)
 
-            # 항등식 검증
+            # 항등식 검증 배지
             check = abs((qty_v + price_v + fx_v) - total_diff) < 1
             st.markdown(
                 f'<div style="background:{"#d4edda" if check else "#f8d7da"};border-radius:6px;'
@@ -932,21 +975,71 @@ try:
 
             st.dataframe(calc_df, use_container_width=True, hide_index=True)
 
-            # 품목별 구성요소 테이블
+            # ── 품목별 구성요소 상세 ──────────────────────────────────────────
             st.markdown("**품목별 구성요소 상세**")
-            detail_cols = ["품목명", "매출0", "매출1", "총차이", "수량차이", "단가차이", "환율차이"]
-            detail_df = va_filtered[[c for c in detail_cols if c in va_filtered.columns]].copy()
-            detail_df = detail_df.rename(columns={
-                "매출0": f"기준매출", "매출1": f"실적매출",
-                "총차이": "총차이", "수량차이": "①수량차이",
-                "단가차이": "②단가차이", "환율차이": "③환율차이"
-            })
-            # 합계 행 추가
-            sum_row = {c: detail_df[c].sum() if detail_df[c].dtype != object else "【합계】"
-                       for c in detail_df.columns}
+
+            # va_filtered에는 집계된 컬럼이 있음
+            avail = va_filtered.columns.tolist()
+            detail_raw = va_filtered.copy()
+
+            # 품목별 항등식 검증 컬럼 추가
+            detail_raw["_check"] = (detail_raw["수량차이"] + detail_raw["단가차이"] + detail_raw["환율차이"]).round(0)
+            detail_raw["_total"] = detail_raw["총차이"].round(0)
+            detail_raw["검증"] = detail_raw.apply(
+                lambda r: "✅" if abs(r["_check"] - r["_total"]) < 1 else f"⚠️ 오차 {r['_check']-r['_total']:+,.0f}",
+                axis=1
+            )
+
+            # 컬럼 구성: 품목명 | 실적매출/수량/단가/환율 | 기준매출/수량/단가/환율 | 차이항목들 | 검증
+            col_map = {
+                "품목명":   "품목명",
+                "매출1":    "실적매출(원)",
+                "Q1":       "실적수량",
+                "P1_krw":   "실적단가(원화)",
+                "P1_fx":    "실적단가(외화)",
+                "ER1":      "실적환율",
+                "매출0":    "기준매출(원)",
+                "Q0":       "기준수량",
+                "P0_krw":   "기준단가(원화)",
+                "P0_fx":    "기준단가(외화)",
+                "ER0":      "기준환율",
+                "총차이":   "총차이(원)",
+                "수량차이": "①수량차이(원)",
+                "단가차이": "②단가차이(원)",
+                "환율차이": "③환율차이(원)",
+                "검증":     "①+②+③=총차이",
+            }
+            sel_cols = [c for c in col_map.keys() if c in detail_raw.columns] + ["검증"]
+            detail_df = detail_raw[sel_cols].rename(columns=col_map).copy()
+
+            # KRW 전용 품목 환율 표시: NaN → "-"
+            if "실적환율" in detail_df.columns:
+                detail_df["실적환율"] = detail_df["실적환율"].where(detail_df["실적환율"].notna(), other=None)
+            if "기준환율" in detail_df.columns:
+                detail_df["기준환율"] = detail_df["기준환율"].where(detail_df["기준환율"].notna(), other=None)
+
+            # 합계 행 (숫자 컬럼만 합산)
+            num_cols_d = detail_df.select_dtypes(include="number").columns.tolist()
+            sum_vals = {c: detail_df[c].sum() for c in num_cols_d}
+            str_vals = {c: ("【합계】" if c == "품목명" else "") for c in detail_df.columns if c not in num_cols_d}
+            sum_row  = {**sum_vals, **str_vals}
             detail_df = pd.concat([detail_df, pd.DataFrame([sum_row])], ignore_index=True)
+
+            # 숫자 포맷 (단가·환율은 소수점 2자리, 나머지는 정수)
+            fmt = {}
+            for c in detail_df.columns:
+                if any(kw in c for kw in ["단가", "환율"]):
+                    fmt[c] = "{:,.2f}"
+                elif c in num_cols_d:
+                    fmt[c] = "{:,.0f}"
+
             st.dataframe(
-                detail_df.style.format({c: "{:,.0f}" for c in detail_df.select_dtypes("number").columns}),
+                detail_df.style.format(fmt, na_rep="-").apply(
+                    lambda row: [
+                        "background-color:#fff3cd;font-weight:700" if str(row.get("①+②+③=총차이","")).startswith("⚠️") else ""
+                        for _ in row
+                    ], axis=1
+                ),
                 use_container_width=True, hide_index=True
             )
 

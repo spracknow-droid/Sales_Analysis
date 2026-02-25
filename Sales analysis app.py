@@ -2,8 +2,24 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from io import BytesIO
+import json
 import warnings
 warnings.filterwarnings('ignore')
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 그룹 설정 직렬화 유틸 (다운로드/업로드용)
+# ══════════════════════════════════════════════════════════════════════════════
+def _groups_to_json_bytes(groups: dict) -> bytes:
+    return json.dumps(groups, ensure_ascii=False, indent=2).encode("utf-8")
+
+def _json_bytes_to_groups(data: bytes) -> dict:
+    try:
+        parsed = json.loads(data.decode("utf-8"))
+        if isinstance(parsed, dict):
+            return {k: v for k, v in parsed.items() if isinstance(v, list)}
+    except Exception:
+        pass
+    return {}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 페이지 설정
@@ -762,14 +778,48 @@ with st.sidebar:
 
         # session_state 초기화
         if "item_groups" not in st.session_state:
-            st.session_state.item_groups = {}   # {그룹명: [품목명, ...]}
+            st.session_state.item_groups = {}
 
         all_items_for_group = sorted(df_all["품목명"].unique().tolist())
 
-        # 새 그룹 추가 폼
+        # ── 설정 내보내기 / 불러오기 ─────────────────────────────────────────
+        with st.expander("💾 설정 저장 / 불러오기", expanded=False):
+            st.caption("Streamlit Cloud는 새로고침 시 초기화됩니다. "
+                       "설정을 PC에 저장했다가 다시 불러오세요.")
+
+            # 내보내기 (다운로드)
+            if st.session_state.item_groups:
+                st.download_button(
+                    label="⬇️ 현재 그룹 설정 다운로드 (.json)",
+                    data=_groups_to_json_bytes(st.session_state.item_groups),
+                    file_name="groups_config.json",
+                    mime="application/json",
+                    use_container_width=True,
+                )
+            else:
+                st.info("저장할 그룹이 없습니다.")
+
+            st.markdown("---")
+
+            # 불러오기 (업로드)
+            uploaded_cfg = st.file_uploader(
+                "⬆️ 저장된 그룹 설정 불러오기 (.json)",
+                type=["json"],
+                key="upload_groups_cfg",
+            )
+            if uploaded_cfg is not None:
+                loaded = _json_bytes_to_groups(uploaded_cfg.read())
+                if loaded:
+                    if st.button("이 설정으로 덮어쓰기", use_container_width=True, type="primary"):
+                        st.session_state.item_groups = loaded
+                        st.success(f"✅ {len(loaded)}개 그룹 불러오기 완료")
+                        st.rerun()
+                else:
+                    st.error("파일 형식이 올바르지 않습니다.")
+
+        # ── 새 그룹 추가 ─────────────────────────────────────────────────────
         with st.expander("➕ 새 그룹 추가", expanded=False):
             new_grp_name = st.text_input("그룹 이름", key="new_grp_name", placeholder="예: 주력 제품")
-            # 이미 다른 그룹에 배정된 품목 제외
             already_assigned = {
                 item for items in st.session_state.item_groups.values() for item in items
             }
@@ -780,7 +830,7 @@ with st.sidebar:
                 key="new_grp_items",
                 placeholder="품목을 선택하세요"
             )
-            if st.button("그룹 저장", key="btn_add_group", use_container_width=True, type="primary"):
+            if st.button("그룹 추가", key="btn_add_group", use_container_width=True, type="primary"):
                 name = new_grp_name.strip()
                 if not name:
                     st.error("그룹 이름을 입력하세요.")
@@ -792,12 +842,11 @@ with st.sidebar:
                     st.session_state.item_groups[name] = new_grp_items
                     st.rerun()
 
-        # 기존 그룹 표시·수정·삭제
+        # ── 기존 그룹 수정 / 삭제 ────────────────────────────────────────────
         if st.session_state.item_groups:
             for grp_name, grp_items in list(st.session_state.item_groups.items()):
                 with st.expander(f"📦 {grp_name}  ({len(grp_items)}개)", expanded=False):
                     st.caption("포함 품목: " + ", ".join(grp_items))
-                    # 편집: 품목 재지정 (현재 그룹 품목 + 미배정 품목)
                     already_except_this = {
                         item for gn, items in st.session_state.item_groups.items()
                         if gn != grp_name for item in items
@@ -821,6 +870,17 @@ with st.sidebar:
                         if st.button("🗑 삭제", key=f"del_{grp_name}", use_container_width=True):
                             del st.session_state.item_groups[grp_name]
                             st.rerun()
+
+            # 그룹이 있으면 하단에 다운로드 버튼 상시 노출
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+            st.download_button(
+                label="💾 현재 설정 저장하기",
+                data=_groups_to_json_bytes(st.session_state.item_groups),
+                file_name="groups_config.json",
+                mime="application/json",
+                use_container_width=True,
+                key="dl_groups_bottom",
+            )
         else:
             st.caption("그룹이 없습니다. 위에서 추가하세요.")
 

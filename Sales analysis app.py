@@ -27,7 +27,7 @@ html, body, [class*="css"] {
 
 /* ── 타이틀 ── */
 .main-title {
-    font-size: 1.75rem; font-weight: 900; color: #0d1f3c;
+    font-size: 1.75rem; font-weight: 900; color: #1a6fd4;
     letter-spacing: -0.5px; margin-bottom: 0.15rem;
 }
 .sub-title {
@@ -37,7 +37,7 @@ html, body, [class*="css"] {
 /* ── 섹션 헤더 ── */
 .section-header {
     font-size: 1.0rem; font-weight: 800;
-    background: linear-gradient(90deg, #1e3a6e 0%, #2d5faa 100%);
+    background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%);
     color: white; padding: 8px 16px; border-radius: 6px;
     margin: 1.6rem 0 1rem 0; letter-spacing: 0.3px;
 }
@@ -758,18 +758,9 @@ else:
         </span>
     </div>""", unsafe_allow_html=True)
 
-# ── 기간 유효성 ───────────────────────────────────────────────────────────────
-c1, c2 = st.columns(2)
+# ── 기간 유효성 (데이터 없을 때만 경고, 건수 박스 제거) ───────────────────────
 base_ok = not df_base.empty
 curr_ok = not df_curr.empty
-c1.markdown(
-    f'<div style="background:#c8d8f8;border-radius:8px;padding:9px 15px;color:#0d1f3c;font-weight:600;">'
-    f'<b>기준</b>: {base_label} &nbsp; {"✅ "+str(len(df_base))+"건" if base_ok else "⚠️ 데이터 없음"}'
-    f'</div>', unsafe_allow_html=True)
-c2.markdown(
-    f'<div style="background:#b8e8c8;border-radius:8px;padding:9px 15px;color:#0a2d18;font-weight:600;">'
-    f'<b>실적</b>: {curr_label} &nbsp; {"✅ "+str(len(df_curr))+"건" if curr_ok else "⚠️ 데이터 없음"}'
-    f'</div>', unsafe_allow_html=True)
 st.markdown("<br/>", unsafe_allow_html=True)
 
 if not base_ok and not curr_ok:
@@ -902,6 +893,62 @@ try:
     with tab_wf:
         fig_wf = render_waterfall(total_base, qty_v, price_v, fx_v, total_curr, base_label, curr_label, accent_color)
         st.plotly_chart(fig_wf, use_container_width=True)
+
+        # ── 계산 근거 데이터 ──────────────────────────────────────────────────
+        with st.expander("🔢 Waterfall 계산 근거 데이터", expanded=False):
+            sign = lambda v: f"+{v:,.0f}" if v >= 0 else f"{v:,.0f}"
+            pct  = lambda v, base: f"({v/base*100:+.1f}%)" if base != 0 else ""
+
+            calc_rows = [
+                {"구분": "기준 매출",   "금액 (원)": f"{total_base:,.0f}",
+                 "설명": f"{base_label} 선택 품목 원화매출 합계",
+                 "비고": ""},
+                {"구분": "① 수량 차이", "금액 (원)": sign(qty_v),
+                 "설명": "수량 변동에 의한 매출 증감",
+                 "비고": "기준단가 × 수량변화" if is_model_A else "실적/기준단가 × 수량변화"},
+                {"구분": "② 단가 차이", "금액 (원)": sign(price_v),
+                 "설명": "단가 변동에 의한 매출 증감",
+                 "비고": "(P실적−P기준) × Q실적 × ER기준" if is_model_A else "총차이 − ①수량 − ③환율"},
+                {"구분": "③ 환율 차이", "금액 (원)": sign(fx_v),
+                 "설명": "환율 변동에 의한 매출 증감",
+                 "비고": "(ER실적−ER기준) × Q실적 × P실적_fx" if is_model_A else "4-Case 분기 계산"},
+                {"구분": "실적 매출",   "금액 (원)": f"{total_curr:,.0f}",
+                 "설명": f"{curr_label} 선택 품목 원화매출 합계",
+                 "비고": ""},
+                {"구분": "▶ 총 차이",   "금액 (원)": sign(total_diff),
+                 "설명": f"실적 − 기준  {pct(total_diff, total_base)}",
+                 "비고": "①+②+③ = 총차이 항등식 검증"},
+            ]
+            calc_df = pd.DataFrame(calc_rows)
+
+            # 항등식 검증
+            check = abs((qty_v + price_v + fx_v) - total_diff) < 1
+            st.markdown(
+                f'<div style="background:{"#d4edda" if check else "#f8d7da"};border-radius:6px;'
+                f'padding:7px 14px;font-size:0.8rem;font-weight:700;'
+                f'color:{"#155724" if check else "#721c24"};margin-bottom:8px;">'
+                f'{"✅ 항등식 검증 통과: ①+②+③ = 총차이 (" + sign(qty_v+price_v+fx_v) + "원)" if check else "⚠️ 항등식 오차 발생 — 확인 필요"}'
+                f'</div>', unsafe_allow_html=True)
+
+            st.dataframe(calc_df, use_container_width=True, hide_index=True)
+
+            # 품목별 구성요소 테이블
+            st.markdown("**품목별 구성요소 상세**")
+            detail_cols = ["품목명", "매출0", "매출1", "총차이", "수량차이", "단가차이", "환율차이"]
+            detail_df = va_filtered[[c for c in detail_cols if c in va_filtered.columns]].copy()
+            detail_df = detail_df.rename(columns={
+                "매출0": f"기준매출", "매출1": f"실적매출",
+                "총차이": "총차이", "수량차이": "①수량차이",
+                "단가차이": "②단가차이", "환율차이": "③환율차이"
+            })
+            # 합계 행 추가
+            sum_row = {c: detail_df[c].sum() if detail_df[c].dtype != object else "【합계】"
+                       for c in detail_df.columns}
+            detail_df = pd.concat([detail_df, pd.DataFrame([sum_row])], ignore_index=True)
+            st.dataframe(
+                detail_df.style.format({c: "{:,.0f}" for c in detail_df.select_dtypes("number").columns}),
+                use_container_width=True, hide_index=True
+            )
 
     with tab_bar:
         va_bar = va_filtered.set_index("품목명")["총차이"].sort_values()
@@ -1067,27 +1114,27 @@ with col_a:
     st.markdown("""
     <div class="fb-block fb-block-qty">
       <div class="fb-title fb-title-qty">① 수량 차이 (Quantity Variance)</div>
-      <span class="fb-eq">(Q당해 − Q전년) × P전년_외화단가 × ER전년</span>
+      <span class="fb-eq">(Q실적 − Q기준) × P기준_외화단가 × ER기준</span>
       <div class="fb-desc">
         💡 <b>수량만 변했다면?</b><br>
-        단가와 환율을 전년 그대로 고정하고,<br>
+        단가와 환율을 기준 그대로 고정하고,<br>
         수량 변화만으로 생긴 매출 증감을 측정.<br>
         판매량이 늘어 생긴 순수 '물량 효과'.
       </div>
-      <span class="fb-note">수량↑↓ 무관 — 항상 전년 외화단가 적용</span>
+      <span class="fb-note">수량↑↓ 무관 — 항상 기준 외화단가 적용</span>
     </div>""", unsafe_allow_html=True)
 with col_b:
     st.markdown("""
     <div class="fb-block fb-block-qty">
       <div class="fb-title fb-title-qty">① 수량 차이 (Volume Incremental)</div>
-      <div class="fb-desc">💡 <b>새로 판 물건은 현재 가격으로, 잃은 물건은 과거 가격으로</b></div>
+      <div class="fb-desc">💡 <b>새로 판 물건은 실적 가격으로, 잃은 물건은 기준 가격으로</b></div>
       <div style="margin-top:8px;">
         <div style="font-size:0.73rem;font-weight:800;color:#0a4d20;margin-bottom:2px;">▲ 수량 증가 시</div>
-        <span class="fb-eq2">(Q당해 − Q전년) × P당해_원화단가</span>
-        <div class="fb-desc">새로 확보한 물량 → 현재 가격으로 가치 산정</div>
+        <span class="fb-eq2">(Q실적 − Q기준) × P실적_원화단가</span>
+        <div class="fb-desc">새로 확보한 물량 → 실적 가격으로 가치 산정</div>
         <div style="font-size:0.73rem;font-weight:800;color:#8b0000;margin:7px 0 2px 0;">▼ 수량 감소 시</div>
-        <span class="fb-eq2">(Q당해 − Q전년) × P전년_원화단가</span>
-        <div class="fb-desc">잃어버린 물량 → 과거 가격만큼의 손실</div>
+        <span class="fb-eq2">(Q실적 − Q기준) × P기준_원화단가</span>
+        <div class="fb-desc">잃어버린 물량 → 기준 가격만큼의 손실</div>
       </div>
     </div>""", unsafe_allow_html=True)
 
@@ -1097,18 +1144,18 @@ with col_a:
     st.markdown("""
     <div class="fb-block fb-block-price">
       <div class="fb-title fb-title-price">② 단가 차이 (Price Variance)</div>
-      <span class="fb-eq">(P당해_외화단가 − P전년_외화단가) × Q당해 × ER전년</span>
+      <span class="fb-eq">(P실적_외화단가 − P기준_외화단가) × Q실적 × ER기준</span>
       <div class="fb-desc">
         💡 <b>단가만 바뀌었다면?</b><br>
-        수량은 당해 실적으로 확정, 환율은 전년 고정.<br>
+        수량은 실적으로 확정, 환율은 기준 고정.<br>
         외화 판매 단가 변동이 만들어낸 순수 '단가 효과'.
       </div>
-      <span class="fb-note">환율 전년 고정 → 환율 효과 완전 배제</span>
+      <span class="fb-note">환율 기준 고정 → 환율 효과 완전 배제</span>
     </div>""", unsafe_allow_html=True)
 with col_b:
     st.markdown("""
     <div class="fb-block fb-block-price">
-      <div class="fb-title fb-title-price">② 단가 차이 (Negotiation Residual) — 마지막에 계산</div>
+      <div class="fb-title fb-title-price">② 단가 차이 (Negotiation Residual) — ①③ 이후 잔여로 확정</div>
       <span class="fb-eq">총차이 − ①수량차이 − ③환율차이</span>
       <div class="fb-desc">
         💡 <b>수량·환율 효과를 모두 제거하고 남은 것이 단가 협상 결과</b><br>
@@ -1124,10 +1171,10 @@ with col_a:
     st.markdown("""
     <div class="fb-block fb-block-fx">
       <div class="fb-title fb-title-fx">③ 환율 차이 (FX Variance)</div>
-      <span class="fb-eq">(ER당해 − ER전년) × Q당해 × P당해_외화단가</span>
+      <span class="fb-eq">(ER실적 − ER기준) × Q실적 × P실적_외화단가</span>
       <div class="fb-desc">
         💡 <b>환율만 바뀌었다면?</b><br>
-        수량·단가가 당해 실적으로 모두 확정된 상태에서,<br>
+        수량·단가가 실적으로 모두 확정된 상태에서,<br>
         환율 변동만으로 원화 환산액이 얼마나 달라졌는지 측정.
       </div>
       <span class="fb-note">KRW 거래는 환율차이 = 0 (환율 개념 없음)</span>
@@ -1135,24 +1182,24 @@ with col_a:
 with col_b:
     st.markdown("""
     <div class="fb-block fb-block-fx">
-      <div class="fb-title fb-title-fx">③ 환율 차이 (FX Exposure) — 먼저 계산</div>
+      <div class="fb-title fb-title-fx">③ 환율 차이 (FX Exposure) — ②단가차이 계산 전에 먼저 확정</div>
       <div class="fb-desc" style="margin-bottom:6px;">💡 <b>단가↑↓ × 수량↑↓ 조합에 따라 환율 노출 범위가 달라짐</b></div>
       <div class="case-g">
         <div class="case-b">
           <div class="case-lbl">단가↑ &amp; 수량↑</div>
-          <span class="case-eq">(ER당해−ER전년) × Q전년 × P당해_fx</span>
+          <span class="case-eq">(ER실적−ER기준) × Q기준 × P실적_fx</span>
         </div>
         <div class="case-b">
           <div class="case-lbl">단가↑ &amp; 수량↓</div>
-          <span class="case-eq">(ER당해−ER전년) × Q당해 × P당해_fx</span>
+          <span class="case-eq">(ER실적−ER기준) × Q실적 × P실적_fx</span>
         </div>
         <div class="case-b">
           <div class="case-lbl">단가↓ &amp; 수량↑</div>
-          <span class="case-eq">(ER당해−ER전년) × Q전년 × P전년_fx</span>
+          <span class="case-eq">(ER실적−ER기준) × Q기준 × P기준_fx</span>
         </div>
         <div class="case-b">
           <div class="case-lbl">단가↓ &amp; 수량↓</div>
-          <span class="case-eq">(ER당해−ER전년) × Q당해 × P전년_fx</span>
+          <span class="case-eq">(ER실적−ER기준) × Q실적 × P기준_fx</span>
         </div>
       </div>
       <span class="fb-note">KRW 거래는 환율차이 = 0</span>
@@ -1160,28 +1207,28 @@ with col_b:
 
 # ── 핵심 차이점 비교표 ─────────────────────────────────────────────────────────
 st.markdown("""
-<div style="font-size:0.88rem;font-weight:800;color:#0d1f3c;
-            border-bottom:2px solid #e2e8f0;padding-bottom:5px;margin:20px 0 10px 0;">
+<div style="font-size:0.92rem;font-weight:800;color:#1a6fd4;
+            border-bottom:2px solid #93c5fd;padding-bottom:5px;margin:20px 0 10px 0;">
   🔍 핵심 차이점 비교
 </div>
 <table class="diff-tbl">
 <thead>
   <tr>
-    <th class="td-cat" style="background:#0d1f3c;color:white;"> </th>
-    <th style="background:#1e3a6e;color:white;">📐 모델 A — 원인별 임팩트</th>
-    <th style="background:#7a3300;color:white;">📈 모델 B — 활동별 증분</th>
+    <th class="td-cat" style="background:#1e40af;color:white;"> </th>
+    <th style="background:#1e40af;color:white;">📐 모델 A — 원인별 임팩트</th>
+    <th style="background:#9a3412;color:white;">📈 모델 B — 활동별 증분</th>
   </tr>
 </thead>
 <tbody>
   <tr>
     <td class="td-cat">수량↑ 시<br>단가 기준</td>
-    <td class="td-a"><span class="ch ch-b">전년 외화단가</span><br>물량 성과를 <b>과거 가치</b>로 보수적 평가</td>
-    <td class="td-b"><span class="ch ch-o">당해 원화단가</span><br>새로 판 물건은 <b>현재 가격</b>으로 입금되는 현실 반영</td>
+    <td class="td-a"><span class="ch ch-b">기준 외화단가</span><br>물량 성과를 <b>기준 가치</b>로 보수적 평가</td>
+    <td class="td-b"><span class="ch ch-o">실적 원화단가</span><br>새로 판 물건은 <b>실적 가격</b>으로 입금되는 현실 반영</td>
   </tr>
   <tr>
     <td class="td-cat">수량↓ 시<br>단가 기준</td>
-    <td class="td-a"><span class="ch ch-b">전년 외화단가</span><br>동일 기준 유지 — 일관성 보장</td>
-    <td class="td-b"><span class="ch ch-b">전년 원화단가</span><br>잃어버린 물량 = 과거 가격만큼의 손실</td>
+    <td class="td-a"><span class="ch ch-b">기준 외화단가</span><br>동일 기준 유지 — 일관성 보장</td>
+    <td class="td-b"><span class="ch ch-b">기준 원화단가</span><br>잃어버린 물량 = 기준 가격만큼의 손실</td>
   </tr>
   <tr>
     <td class="td-cat">단가차이<br>계산 방식</td>
@@ -1190,7 +1237,7 @@ st.markdown("""
   </tr>
   <tr>
     <td class="td-cat">환율차이<br>계산 방식</td>
-    <td class="td-a"><span class="ch ch-g">단일 공식</span><br>Q당해 × P당해_fx 고정 → 단순·명확</td>
+    <td class="td-a"><span class="ch ch-g">단일 공식</span><br>Q실적 × P실적_fx 고정 → 단순·명확</td>
     <td class="td-b"><span class="ch ch-o">4-Case 분기</span><br>단가·수량 방향 조합에 따라 가중치 상이</td>
   </tr>
   <tr>

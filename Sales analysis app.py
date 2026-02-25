@@ -754,6 +754,77 @@ with st.sidebar:
         analysis_model = st.session_state.analysis_model
 
         st.markdown("---")
+
+        # ══════════════════════════════════════════════════════════════════════
+        # 📂 품목 그룹 설정
+        # ══════════════════════════════════════════════════════════════════════
+        st.markdown("### 📂 품목 그룹 설정")
+
+        # session_state 초기화
+        if "item_groups" not in st.session_state:
+            st.session_state.item_groups = {}   # {그룹명: [품목명, ...]}
+
+        all_items_for_group = sorted(df_all["품목명"].unique().tolist())
+
+        # 새 그룹 추가 폼
+        with st.expander("➕ 새 그룹 추가", expanded=False):
+            new_grp_name = st.text_input("그룹 이름", key="new_grp_name", placeholder="예: 주력 제품")
+            # 이미 다른 그룹에 배정된 품목 제외
+            already_assigned = {
+                item for items in st.session_state.item_groups.values() for item in items
+            }
+            available_items = [i for i in all_items_for_group if i not in already_assigned]
+            new_grp_items = st.multiselect(
+                "포함할 품목 선택",
+                options=available_items,
+                key="new_grp_items",
+                placeholder="품목을 선택하세요"
+            )
+            if st.button("그룹 저장", key="btn_add_group", use_container_width=True, type="primary"):
+                name = new_grp_name.strip()
+                if not name:
+                    st.error("그룹 이름을 입력하세요.")
+                elif name in st.session_state.item_groups:
+                    st.error(f"'{name}' 그룹이 이미 존재합니다.")
+                elif not new_grp_items:
+                    st.error("품목을 1개 이상 선택하세요.")
+                else:
+                    st.session_state.item_groups[name] = new_grp_items
+                    st.rerun()
+
+        # 기존 그룹 표시·수정·삭제
+        if st.session_state.item_groups:
+            for grp_name, grp_items in list(st.session_state.item_groups.items()):
+                with st.expander(f"📦 {grp_name}  ({len(grp_items)}개)", expanded=False):
+                    st.caption("포함 품목: " + ", ".join(grp_items))
+                    # 편집: 품목 재지정 (현재 그룹 품목 + 미배정 품목)
+                    already_except_this = {
+                        item for gn, items in st.session_state.item_groups.items()
+                        if gn != grp_name for item in items
+                    }
+                    edit_options = [i for i in all_items_for_group if i not in already_except_this]
+                    edited_items = st.multiselect(
+                        "품목 수정",
+                        options=edit_options,
+                        default=grp_items,
+                        key=f"edit_{grp_name}"
+                    )
+                    c_save, c_del = st.columns(2)
+                    with c_save:
+                        if st.button("저장", key=f"save_{grp_name}", use_container_width=True):
+                            if not edited_items:
+                                st.error("품목 1개 이상 필요")
+                            else:
+                                st.session_state.item_groups[grp_name] = edited_items
+                                st.rerun()
+                    with c_del:
+                        if st.button("🗑 삭제", key=f"del_{grp_name}", use_container_width=True):
+                            del st.session_state.item_groups[grp_name]
+                            st.rerun()
+        else:
+            st.caption("그룹이 없습니다. 위에서 추가하세요.")
+
+        st.markdown("---")
         st.markdown("### ⚙️ 표시 설정")
         show_detail = st.checkbox("수량·단가·환율 상세 컬럼 표시", value=False)
         st.caption("ℹ️ ①수량차이 + ②단가차이 + ③환율차이 = 총차이")
@@ -831,50 +902,134 @@ with st.spinner("분석 중..."):
     va, va_detail = model_A(df_base, df_curr) if is_model_A else model_B(df_base, df_curr)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 품목 선택 버튼
+# 품목/그룹 선택
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-header">📦 품목 선택</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-header">📦 분석 대상 선택</div>', unsafe_allow_html=True)
 
 all_items = sorted(va["품목명"].unique())
 
-if "selected_items" not in st.session_state:
-    st.session_state.selected_items = set(all_items)
+# ── 그룹 구조 계산 ──────────────────────────────────────────────────────────
+# item_groups: {그룹명: [품목명,...]}  (사이드바에서 정의)
+# 그룹에 속하지 않은 품목 → "미분류" 그룹으로 자동 편입
+groups_raw   = st.session_state.get("item_groups", {})
+assigned     = {item for items in groups_raw.values() for item in items}
+unassigned   = [i for i in all_items if i not in assigned]
 
-# 아이템 목록이 바뀌면 초기화
-if not st.session_state.selected_items.issubset(set(all_items)):
-    st.session_state.selected_items = set(all_items)
+# 실제 분석 품목만 남긴 그룹 (데이터에 없는 품목 자동 제외)
+groups: dict[str, list[str]] = {}
+for gn, items in groups_raw.items():
+    valid = [i for i in items if i in all_items]
+    if valid:
+        groups[gn] = valid
+if unassigned:
+    groups["미분류"] = unassigned
 
-ctrl1, ctrl2, _ = st.columns([1, 1, 8])
-with ctrl1:
-    if st.button("✅ 전체 선택", use_container_width=True):
-        st.session_state.selected_items = set(all_items)
+# ── selected_groups: 선택된 그룹 집합 ───────────────────────────────────────
+if "selected_groups" not in st.session_state:
+    st.session_state.selected_groups = set(groups.keys())
+
+# 그룹 목록이 바뀌면 새 그룹 자동 선택
+for gn in groups:
+    if gn not in st.session_state.selected_groups and gn not in st.session_state.get("_deselected_groups", set()):
+        st.session_state.selected_groups.add(gn)
+# 사라진 그룹 정리
+st.session_state.selected_groups = {g for g in st.session_state.selected_groups if g in groups}
+
+# ── 전체 선택/해제 버튼 ───────────────────────────────────────────────────────
+ga, gb, _ = st.columns([1, 1, 6])
+with ga:
+    if st.button("✅ 전체 선택", key="grp_all", use_container_width=True):
+        st.session_state.selected_groups = set(groups.keys())
+        st.session_state["_deselected_groups"] = set()
         st.rerun()
-with ctrl2:
-    if st.button("⬜ 전체 해제", use_container_width=True):
-        st.session_state.selected_items = set()
+with gb:
+    if st.button("⬜ 전체 해제", key="grp_none", use_container_width=True):
+        st.session_state.selected_groups = set()
+        st.session_state["_deselected_groups"] = set(groups.keys())
         st.rerun()
 
-cols_per_row = 5
-for row_items in [all_items[i:i+cols_per_row] for i in range(0, len(all_items), cols_per_row)]:
-    btn_cols = st.columns(cols_per_row)
-    for col, item in zip(btn_cols, row_items):
-        is_active = item in st.session_state.selected_items
-        with col:
-            if st.button(
-                f"{'✔ ' if is_active else ''}{item}",
-                key=f"btn_{item}",
-                use_container_width=True,
-                type="primary" if is_active else "secondary",
-            ):
-                if item in st.session_state.selected_items:
-                    st.session_state.selected_items.discard(item)
-                else:
-                    st.session_state.selected_items.add(item)
-                st.rerun()
+st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
-selected_items = list(st.session_state.selected_items)
+# ── 그룹 카드 렌더링 ─────────────────────────────────────────────────────────
+# 그룹별로 한 줄씩 카드 표시: [토글 버튼] [그룹명·품목수·품목 태그들]
+GROUP_COLORS = [
+    ("#1e40af", "#dbeafe", "#1e3a8a"),  # 파랑
+    ("#7c3aed", "#ede9fe", "#5b21b6"),  # 보라
+    ("#065f46", "#d1fae5", "#064e3b"),  # 초록
+    ("#9a3412", "#fee2e2", "#7c2d12"),  # 빨강
+    ("#92400e", "#fef3c7", "#78350f"),  # 노랑
+    ("#0e7490", "#cffafe", "#0c4a6e"),  # 청록
+    ("#1d4ed8", "#dbeafe", "#1e3a8a"),  # 남색
+]
+
+for gi, (gn, items) in enumerate(groups.items()):
+    is_active = gn in st.session_state.selected_groups
+    clr_active, clr_bg, clr_dark = GROUP_COLORS[gi % len(GROUP_COLORS)]
+
+    # 그룹별 KPI 미리보기 (선택 여부 무관하게 항상 계산)
+    grp_va = va[va["품목명"].isin(items)]
+    grp_diff  = grp_va["총차이"].sum()
+    grp_curr  = grp_va["매출1"].sum()
+    diff_sign = "▲ +" if grp_diff >= 0 else "▼ "
+    diff_color = "#16a34a" if grp_diff >= 0 else "#dc2626"
+
+    # 카드 스타일
+    card_bg     = clr_active  if is_active else "#f8fafc"
+    card_border = clr_active  if is_active else "#cbd5e1"
+    grp_label   = clr_bg      if is_active else clr_dark
+    tag_bg      = "rgba(255,255,255,0.22)" if is_active else "#e2e8f0"
+    tag_color   = "#ffffff"   if is_active else "#374151"
+    title_color = "#ffffff"   if is_active else clr_dark
+    kpi_color   = "#e0f2fe"   if is_active else "#475569"
+    item_tags   = "  ".join(
+        f'<span style="display:inline-block;background:{tag_bg};color:{tag_color};'
+        f'border-radius:4px;padding:1px 8px;font-size:0.7rem;margin:1px 1px;">'
+        f'{item}</span>'
+        for item in items
+    )
+
+    left_col, right_col = st.columns([1, 11])
+    with left_col:
+        btn_type = "primary" if is_active else "secondary"
+        if st.button(
+            "✔" if is_active else "○",
+            key=f"grp_toggle_{gn}",
+            use_container_width=True,
+            type=btn_type,
+        ):
+            if is_active:
+                st.session_state.selected_groups.discard(gn)
+                st.session_state.setdefault("_deselected_groups", set()).add(gn)
+            else:
+                st.session_state.selected_groups.add(gn)
+                st.session_state.get("_deselected_groups", set()).discard(gn)
+            st.rerun()
+
+    with right_col:
+        st.markdown(f"""
+        <div style="background:{card_bg};border:1.5px solid {card_border};border-radius:10px;
+                    padding:10px 14px;margin-bottom:2px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+            <span style="font-size:0.88rem;font-weight:800;color:{title_color};">
+              📦 {gn}&nbsp;
+              <span style="font-size:0.72rem;font-weight:500;opacity:0.85;">({len(items)}개 품목)</span>
+            </span>
+            <span style="font-size:0.78rem;color:{kpi_color};text-align:right;">
+              실적 {grp_curr:,.0f}원<br>
+              <span style="color:{'#86efac' if is_active else diff_color};font-weight:700;">{diff_sign}{grp_diff:,.0f}원</span>
+            </span>
+          </div>
+          <div style="line-height:1.8;">{item_tags}</div>
+        </div>""", unsafe_allow_html=True)
+
+# ── 선택된 품목 계산 ─────────────────────────────────────────────────────────
+selected_items = [
+    item for gn in st.session_state.selected_groups
+    for item in groups.get(gn, [])
+    if item in all_items
+]
 if not selected_items:
-    st.warning("품목을 1개 이상 선택하세요.")
+    st.warning("그룹을 1개 이상 선택하세요.")
     st.stop()
 
 # 품목명 단위 요약 (KPI·차트용)
@@ -944,6 +1099,60 @@ st.dataframe(
     use_container_width=True,
     height=min(520, max(260, (len(va_disp_total)+1)*36+40)),
 )
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 그룹별 드릴다운
+# ══════════════════════════════════════════════════════════════════════════════
+if st.session_state.get("item_groups"):   # 사용자 정의 그룹이 있을 때만 표시
+    st.markdown('<div class="section-header">🔍 그룹별 드릴다운</div>', unsafe_allow_html=True)
+    st.caption("각 그룹 합산 요약 → expander 펼치면 하위 품목 상세 확인")
+
+    for gi, (gn, items) in enumerate(groups.items()):
+        if gn not in st.session_state.selected_groups:
+            continue   # 선택 안 된 그룹은 스킵
+        if gn == "미분류":
+            continue   # 미분류는 드릴다운 패널 생략
+
+        grp_items_valid = [i for i in items if i in all_items]
+        if not grp_items_valid:
+            continue
+
+        clr_active = GROUP_COLORS[gi % len(GROUP_COLORS)][0]
+
+        grp_va   = va[va["품목명"].isin(grp_items_valid)]
+        g_base   = grp_va["매출0"].sum()
+        g_curr   = grp_va["매출1"].sum()
+        g_diff   = grp_va["총차이"].sum()
+        g_qty    = grp_va["수량차이"].sum()
+        g_price  = grp_va["단가차이"].sum()
+        g_fx     = grp_va["환율차이"].sum()
+
+        d_sign   = "▲ +" if g_diff >= 0 else "▼ "
+        d_color  = "#16a34a" if g_diff >= 0 else "#dc2626"
+
+        # 그룹 헤더 배지
+        st.markdown(f"""
+        <div style="background:{clr_active};border-radius:8px;padding:9px 16px;
+                    display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="color:white;font-weight:800;font-size:0.92rem;">📦 {gn}</span>
+          <span style="color:white;font-size:0.8rem;">
+            기준 {g_base:,.0f}원 &nbsp;→&nbsp; 실적 {g_curr:,.0f}원 &nbsp;│&nbsp;
+            총차이 <b>{d_sign}{g_diff:,.0f}원</b>
+            &nbsp;(① {g_qty:+,.0f} &nbsp;② {g_price:+,.0f} &nbsp;③ {g_fx:+,.0f})
+          </span>
+        </div>""", unsafe_allow_html=True)
+
+        with st.expander(f"  하위 품목 상세 펼치기 ({len(grp_items_valid)}개)", expanded=False):
+            grp_detail = va_detail[va_detail["품목명"].isin(grp_items_valid)].copy()
+            grp_tbl, grp_money = build_table(
+                grp_detail if show_detail else grp_va,
+                base_label, curr_label, show_detail
+            )
+            st.dataframe(
+                styled_df(grp_tbl, grp_money),
+                use_container_width=True,
+                height=min(400, max(200, (len(grp_tbl)+1)*36+40)),
+            )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 시각화

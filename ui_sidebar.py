@@ -3,6 +3,12 @@
 #   반환값: (df_all, df_base, df_curr, base_label, curr_label,
 #            analysis_model, show_detail, period_mode)
 # ══════════════════════════════════════════════════════════════════════════════
+import os as _os, sys as _sys
+_HERE = _os.path.dirname(_os.path.abspath(__file__))
+if _HERE not in _sys.path:
+    _sys.path.insert(0, _HERE)
+
+
 import streamlit as st
 from data_loader import load_excel, groups_to_json_bytes, json_bytes_to_groups
 from config import MONTH_KR

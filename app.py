@@ -12,6 +12,11 @@
 #   ui_group_selector.py render_group_selector → 그룹 카드 UI
 #   ui_model_guide.py    render_model_guide → 하단 모델 비교표
 # ══════════════════════════════════════════════════════════════════════════════
+import os, sys
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -22,6 +27,7 @@ from models import model_A, model_B
 from ui_components import styled_df, kpi_card, render_waterfall, build_table
 from ui_sidebar import render_sidebar
 from ui_group_selector import render_group_selector
+from ui_group_editor import render_group_editor
 from ui_model_guide import render_model_guide
 
 # ── 페이지 설정 ───────────────────────────────────────────────────────────────
@@ -105,6 +111,11 @@ if df_all is None:
         })
         st.dataframe(col_info, use_container_width=True, hide_index=True)
     st.stop()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 품목 그룹 설정 (편집 테이블)
+# ══════════════════════════════════════════════════════════════════════════════
+render_group_editor(df_all)
 
 # ── 선택된 모델 배너 ──────────────────────────────────────────────────────────
 is_model_A   = "모델 A" in analysis_model
@@ -210,7 +221,7 @@ st.dataframe(
 # ══════════════════════════════════════════════════════════════════════════════
 # 그룹별 드릴다운
 # ══════════════════════════════════════════════════════════════════════════════
-if st.session_state.get("item_groups"):
+if st.session_state.get("item_mapping"):  # 사용자 정의 그룹이 있을 때만
     st.markdown('<div class="section-header">🔍 그룹별 드릴다운</div>', unsafe_allow_html=True)
     st.caption("각 그룹 합산 요약 → expander 펼치면 하위 품목 상세 확인")
 

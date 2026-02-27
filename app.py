@@ -183,28 +183,35 @@ st.markdown('<div class="section-header">📦 분석 대상 선택</div>', unsaf
 
 if has_custom:
     # ── 커스텀 그룹이 있는 경우 ──────────────────────────────────────────────
-    # session_state로 그룹 선택 유지 (모델 변경 시에도 초기화 안 됨)
-    if "selected_groups_persistent" not in st.session_state:
-        st.session_state.selected_groups_persistent = custom_group_names
+    # key 직접 초기화 방식 — default 파라미터 없이 session_state만 사용
+    # (default + key 동시 사용 시 리런마다 default로 리셋되는 Streamlit 버그 회피)
 
-    # 유효하지 않은 그룹(삭제된 그룹) 정리
-    st.session_state.selected_groups_persistent = [
-        g for g in st.session_state.selected_groups_persistent if g in group_names
+    # 처음 접근 시에만 초기화
+    if "ms_groups" not in st.session_state:
+        st.session_state["ms_groups"] = list(custom_group_names)
+
+    # 삭제된 그룹 정리
+    st.session_state["ms_groups"] = [
+        g for g in st.session_state["ms_groups"] if g in group_names
     ]
-    # 새로 생긴 커스텀 그룹은 자동 추가
-    for g in custom_group_names:
-        if g not in st.session_state.selected_groups_persistent:
-            st.session_state.selected_groups_persistent.append(g)
 
+    # 진짜 새로 생긴 그룹만 자동 추가 (기존에 없던 것만)
+    if "known_custom_groups" not in st.session_state:
+        st.session_state["known_custom_groups"] = set()
+    truly_new = [g for g in custom_group_names
+                 if g not in st.session_state["known_custom_groups"]]
+    for g in truly_new:
+        if g not in st.session_state["ms_groups"]:
+            st.session_state["ms_groups"].append(g)
+    st.session_state["known_custom_groups"] = set(custom_group_names)
+
+    # default 없이 key만 — session_state 값이 그대로 유지됨
     selected_groups = st.multiselect(
         "그룹 선택 (기본: 커스텀 그룹 전체)",
         options=group_names,
-        default=st.session_state.selected_groups_persistent,
         key="ms_groups",
         placeholder="그룹을 선택하세요",
     )
-    # 선택 결과를 session_state에 저장 → 모델 변경 후에도 유지
-    st.session_state.selected_groups_persistent = selected_groups
 
     # 선택된 그룹의 품목 전체 = 분석 대상
     selected_items = [

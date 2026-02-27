@@ -1,22 +1,17 @@
-import os as _os, sys as _sys
-_HERE = _os.path.dirname(_os.path.abspath(__file__))
-if _HERE not in _sys.path:
-    _sys.path.insert(0, _HERE)
-
 import pandas as pd
 import streamlit as st
 from io import BytesIO
 from collections import Counter
 
 
-def _mapping_to_excel(editor_df: pd.DataFrame) -> bytes:
+def _mapping_to_excel(editor_df):
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         editor_df.to_excel(writer, index=False, sheet_name="품목그룹")
     return buf.getvalue()
 
 
-def _excel_to_mapping(data: bytes) -> dict:
+def _excel_to_mapping(data):
     try:
         df = pd.read_excel(BytesIO(data), dtype=str).fillna("")
         if "품목명" not in df.columns or "커스텀 그룹명" not in df.columns:
@@ -24,25 +19,17 @@ def _excel_to_mapping(data: bytes) -> dict:
         return {
             row["품목명"]: row["커스텀 그룹명"].strip()
             for _, row in df.iterrows()
-            if row["품목명"].strip()
+            if str(row["품목명"]).strip()
         }
     except Exception:
         return {}
 
 
-def render_group_editor(df_all: pd.DataFrame):
-    """
-    품목 그룹 편집 UI.
-    session_state.item_mapping = {품목명: 커스텀그룹명} 갱신.
-    """
+def render_group_editor(df_all):
     st.markdown('<div class="section-header">📂 품목 그룹 설정</div>',
                 unsafe_allow_html=True)
-    st.caption(
-        "커스텀 그룹명 열에 그룹명을 입력하면 같은 이름끼리 묶입니다. "
-        "빈칸은 미분류로 처리됩니다."
-    )
+    st.caption("커스텀 그룹명 열에 그룹명을 입력하면 같은 이름끼리 묶입니다. 빈칸은 미분류로 처리됩니다.")
 
-    # 고유 품목 목록
     items_df = (
         df_all[["품목계정", "품목명", "품목코드"]]
         .drop_duplicates(subset=["품목명"])
@@ -50,11 +37,9 @@ def render_group_editor(df_all: pd.DataFrame):
         .reset_index(drop=True)
     )
 
-    # 기존 매핑 적용
     mapping = st.session_state.get("item_mapping", {})
     items_df["커스텀 그룹명"] = items_df["품목명"].map(mapping).fillna("")
 
-    # 업로드 / 다운로드
     col_up, col_dl = st.columns(2)
     with col_up:
         uploaded = st.file_uploader(
@@ -84,16 +69,15 @@ def render_group_editor(df_all: pd.DataFrame):
             use_container_width=True,
         )
 
-    # 편집 테이블
     edited_df = st.data_editor(
         items_df,
         use_container_width=True,
         hide_index=True,
         height=min(600, max(200, len(items_df) * 36 + 60)),
         column_config={
-            "품목계정":    st.column_config.TextColumn("품목계정",    disabled=True, width="small"),
-            "품목코드":    st.column_config.TextColumn("품목코드",    disabled=True, width="small"),
-            "품목명":      st.column_config.TextColumn("품목명",      disabled=True, width="medium"),
+            "품목계정": st.column_config.TextColumn("품목계정", disabled=True, width="small"),
+            "품목코드": st.column_config.TextColumn("품목코드", disabled=True, width="small"),
+            "품목명":   st.column_config.TextColumn("품목명",   disabled=True, width="medium"),
             "커스텀 그룹명": st.column_config.TextColumn(
                 "커스텀 그룹명",
                 help="같은 이름을 입력한 품목끼리 하나의 그룹으로 묶입니다",
@@ -103,12 +87,11 @@ def render_group_editor(df_all: pd.DataFrame):
         key="group_editor_table",
     )
 
-    # 저장 / 초기화
     c1, c2, _ = st.columns([1, 1, 4])
     with c1:
         if st.button("그룹 설정 저장", type="primary", use_container_width=True):
             new_mapping = {
-                row["품목명"]: row["커스텀 그룹명"].strip()
+                str(row["품목명"]): str(row["커스텀 그룹명"]).strip()
                 for _, row in edited_df.iterrows()
                 if str(row.get("커스텀 그룹명", "")).strip()
             }
@@ -121,7 +104,6 @@ def render_group_editor(df_all: pd.DataFrame):
             st.session_state.item_mapping = {}
             st.rerun()
 
-    # 현재 그룹 요약 배지
     current_mapping = st.session_state.get("item_mapping", {})
     if current_mapping:
         grp_counts = Counter(v for v in current_mapping.values() if v)

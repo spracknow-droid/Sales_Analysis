@@ -1,6 +1,12 @@
 # ══════════════════════════════════════════════════════════════════════════════
 # ui_group_selector.py  —  품목/그룹 선택 카드 UI
 # ══════════════════════════════════════════════════════════════════════════════
+import os as _os, sys as _sys
+_HERE = _os.path.dirname(_os.path.abspath(__file__))
+if _HERE not in _sys.path:
+    _sys.path.insert(0, _HERE)
+
+
 import streamlit as st
 import pandas as pd
 from config import GROUP_COLORS

@@ -1,6 +1,12 @@
 # ══════════════════════════════════════════════════════════════════════════════
 # data_loader.py  —  데이터 로딩 및 그룹 설정 직렬화
 # ══════════════════════════════════════════════════════════════════════════════
+import os as _os, sys as _sys
+_HERE = _os.path.dirname(_os.path.abspath(__file__))
+if _HERE not in _sys.path:
+    _sys.path.insert(0, _HERE)
+
+
 import json
 import pandas as pd
 import streamlit as st

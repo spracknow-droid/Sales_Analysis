@@ -1,142 +1,155 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# ui_group_selector.py  —  품목 그룹 선택 카드 UI
-#   item_mapping({품목명: 커스텀그룹명}) → groups({그룹명: [품목명]}) 변환 후 카드 렌더
+# ui_group_editor.py  —  품목 그룹 편집 테이블 (메인 화면)
+#
+# 설계:
+#   · df_all에서 고유 (품목계정, 품목명, 품목코드) 추출
+#   · data_editor로 "커스텀 그룹명" 열을 편집 → 같은 그룹명끼리 묶임
+#   · 저장 → session_state.item_mapping = {품목명: 커스텀그룹명}
+#   · Excel 다운로드 / 업로드로 영속성 유지
 # ══════════════════════════════════════════════════════════════════════════════
 import os as _os, sys as _sys
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
 if _HERE not in _sys.path:
     _sys.path.insert(0, _HERE)
 
-import streamlit as st
 import pandas as pd
-from config import GROUP_COLORS
+import streamlit as st
+from io import BytesIO
 
 
-def _build_groups(item_mapping: dict, all_items: list) -> dict:
+# ── 엑셀 직렬화 헬퍼 ─────────────────────────────────────────────────────────
+
+def _mapping_to_excel(editor_df: pd.DataFrame) -> bytes:
+    """그룹 편집 테이블 → Excel bytes"""
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        editor_df.to_excel(writer, index=False, sheet_name="품목그룹")
+    return buf.getvalue()
+
+
+def _excel_to_mapping(data: bytes) -> dict:
+    """Excel bytes → {품목명: 커스텀그룹명} dict"""
+    try:
+        df = pd.read_excel(BytesIO(data), dtype=str).fillna("")
+        if "품목명" not in df.columns or "커스텀 그룹명" not in df.columns:
+            return {}
+        return {
+            row["품목명"]: row["커스텀 그룹명"].strip()
+            for _, row in df.iterrows()
+            if row["품목명"].strip()
+        }
+    except Exception:
+        return {}
+
+
+# ── 메인 렌더 함수 ────────────────────────────────────────────────────────────
+
+def render_group_editor(df_all: pd.DataFrame):
     """
-    item_mapping({품목명: 커스텀그룹명}) + 분석 품목 목록
-    → groups({그룹명: [품목명, ...]})
-    커스텀그룹명이 없거나 빈 문자열이면 '미분류'로 편입.
+    품목 그룹 편집 UI 렌더링.
+    session_state.item_mapping = {품목명: 커스텀그룹명} 을 갱신.
     """
-    groups: dict[str, list] = {}
-    for item in all_items:
-        grp = item_mapping.get(item, "").strip()
-        if not grp:
-            grp = "미분류"
-        groups.setdefault(grp, []).append(item)
-
-    # 미분류를 마지막으로
-    if "미분류" in groups:
-        unclassified = groups.pop("미분류")
-        groups["미분류"] = unclassified
-
-    return groups
-
-
-def render_group_selector(va: pd.DataFrame) -> tuple[list[str], dict[str, list[str]]]:
-    """
-    그룹 카드 토글 UI를 렌더링하고 (selected_items, groups) 반환.
-    """
-    st.markdown('<div class="section-header">📦 분석 대상 선택</div>',
+    st.markdown('<div class="section-header">📂 품목 그룹 설정</div>',
                 unsafe_allow_html=True)
+    st.caption(
+        "**커스텀 그룹명** 열에 그룹명을 입력하면 같은 이름끼리 묶입니다. "
+        "빈칸은 '미분류'로 처리됩니다."
+    )
 
-    all_items    = sorted(va["품목명"].unique())
-    item_mapping = st.session_state.get("item_mapping", {})
-    groups       = _build_groups(item_mapping, all_items)
+    # ── 고유 품목 목록 구성 ──────────────────────────────────────────────────
+    items_df = (
+        df_all[["품목계정", "품목명", "품목코드"]]
+        .drop_duplicates(subset=["품목명"])
+        .sort_values(["품목계정", "품목명"])
+        .reset_index(drop=True)
+    )
 
-    # ── selected_groups 초기화 ──────────────────────────────────────────────
-    if "selected_groups" not in st.session_state:
-        st.session_state.selected_groups = set(groups.keys())
+    # 기존 매핑 적용
+    mapping = st.session_state.get("item_mapping", {})
+    items_df["커스텀 그룹명"] = items_df["품목명"].map(mapping).fillna("")
 
-    # 새 그룹 자동 선택, 사라진 그룹 정리
-    deselected = st.session_state.get("_deselected_groups", set())
-    for gn in groups:
-        if gn not in st.session_state.selected_groups and gn not in deselected:
-            st.session_state.selected_groups.add(gn)
-    st.session_state.selected_groups = {
-        g for g in st.session_state.selected_groups if g in groups
-    }
+    # ── 업로드/다운로드 영역 ─────────────────────────────────────────────────
+    col_up, col_dl = st.columns([1, 1])
 
-    # ── 전체 선택/해제 ──────────────────────────────────────────────────────
-    ga, gb, _ = st.columns([1, 1, 6])
-    with ga:
-        if st.button("✅ 전체 선택", key="grp_all", use_container_width=True):
-            st.session_state.selected_groups = set(groups.keys())
-            st.session_state["_deselected_groups"] = set()
-            st.rerun()
-    with gb:
-        if st.button("⬜ 전체 해제", key="grp_none", use_container_width=True):
-            st.session_state.selected_groups = set()
-            st.session_state["_deselected_groups"] = set(groups.keys())
-            st.rerun()
+    with col_up:
+        uploaded = st.file_uploader(
+            "⬆️ 이전 그룹 설정 불러오기 (.xlsx)",
+            type=["xlsx"], key="upload_group_excel",
+            label_visibility="collapsed",
+        )
+        if uploaded:
+            loaded = _excel_to_mapping(uploaded.read())
+            if loaded:
+                st.session_state.item_mapping = loaded
+                st.success(f"✅ {sum(1 for v in loaded.values() if v)}개 품목 그룹 불러오기 완료")
+                st.rerun()
+            else:
+                st.error("파일 형식이 올바르지 않습니다. (품목명·커스텀 그룹명 열 필요)")
 
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-
-    # ── 그룹 카드 렌더링 ────────────────────────────────────────────────────
-    for gi, (gn, items) in enumerate(groups.items()):
-        is_active = gn in st.session_state.selected_groups
-        clr_active, _, clr_dark = GROUP_COLORS[gi % len(GROUP_COLORS)]
-
-        grp_va    = va[va["품목명"].isin(items)]
-        grp_diff  = grp_va["총차이"].sum()
-        grp_curr  = grp_va["매출1"].sum()
-        diff_sign = "▲ +" if grp_diff >= 0 else "▼ "
-
-        card_bg     = clr_active               if is_active else "#f8fafc"
-        card_border = clr_active               if is_active else "#cbd5e1"
-        tag_bg      = "rgba(255,255,255,0.22)" if is_active else "#e2e8f0"
-        tag_color   = "#ffffff"                if is_active else "#374151"
-        title_color = "#ffffff"                if is_active else clr_dark
-        kpi_color   = "#e0f2fe"                if is_active else "#475569"
-        diff_color  = "#86efac" if is_active else ("#16a34a" if grp_diff >= 0 else "#dc2626")
-
-        item_tags = "  ".join(
-            f'<span style="display:inline-block;background:{tag_bg};color:{tag_color};'
-            f'border-radius:4px;padding:1px 8px;font-size:0.7rem;margin:1px;">'
-            f'{item}</span>'
-            for item in items
+    with col_dl:
+        dl_df = items_df.copy()
+        dl_df["커스텀 그룹명"] = dl_df["품목명"].map(
+            st.session_state.get("item_mapping", {})
+        ).fillna("")
+        st.download_button(
+            label="⬇️ 현재 그룹 설정 다운로드 (.xlsx)",
+            data=_mapping_to_excel(dl_df),
+            file_name="품목그룹설정.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
         )
 
-        left_col, right_col = st.columns([1, 11])
-        with left_col:
-            if st.button(
-                "✔" if is_active else "○",
-                key=f"grp_toggle_{gn}",
-                use_container_width=True,
-                type="primary" if is_active else "secondary",
-            ):
-                if is_active:
-                    st.session_state.selected_groups.discard(gn)
-                    st.session_state.setdefault("_deselected_groups", set()).add(gn)
-                else:
-                    st.session_state.selected_groups.add(gn)
-                    st.session_state.get("_deselected_groups", set()).discard(gn)
-                st.rerun()
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-        with right_col:
-            st.markdown(f"""
-            <div style="background:{card_bg};border:1.5px solid {card_border};
-                        border-radius:10px;padding:10px 14px;margin-bottom:2px;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-                <span style="font-size:0.88rem;font-weight:800;color:{title_color};">
-                  📦 {gn}&nbsp;<span style="font-size:0.72rem;font-weight:500;opacity:0.85;">({len(items)}개 품목)</span>
-                </span>
-                <span style="font-size:0.78rem;color:{kpi_color};text-align:right;">
-                  실적 {grp_curr:,.0f}원<br>
-                  <span style="color:{diff_color};font-weight:700;">{diff_sign}{grp_diff:,.0f}원</span>
-                </span>
-              </div>
-              <div style="line-height:1.8;">{item_tags}</div>
-            </div>""", unsafe_allow_html=True)
+    # ── 편집 가능 테이블 ─────────────────────────────────────────────────────
+    edited_df = st.data_editor(
+        items_df,
+        use_container_width=True,
+        hide_index=True,
+        height=min(600, max(200, len(items_df) * 36 + 60)),
+        column_config={
+            "품목계정": st.column_config.TextColumn("품목계정", disabled=True, width="small"),
+            "품목코드": st.column_config.TextColumn("품목코드", disabled=True, width="small"),
+            "품목명":   st.column_config.TextColumn("품목명",   disabled=True, width="medium"),
+            "커스텀 그룹명": st.column_config.TextColumn(
+                "커스텀 그룹명",
+                help="같은 이름을 입력한 품목끼리 하나의 그룹으로 묶입니다",
+                width="medium",
+            ),
+        },
+        key="group_editor_table",
+    )
 
-    # ── 선택된 품목 계산 ────────────────────────────────────────────────────
-    selected_items = [
-        item for gn in st.session_state.selected_groups
-        for item in groups.get(gn, [])
-        if item in all_items
-    ]
-    if not selected_items:
-        st.warning("그룹을 1개 이상 선택하세요.")
-        st.stop()
+    # ── 저장 버튼 ────────────────────────────────────────────────────────────
+    c1, c2, _ = st.columns([1, 1, 4])
+    with c1:
+        if st.button("💾 그룹 설정 저장", type="primary", use_container_width=True):
+            new_mapping = {
+                row["품목명"]: row["커스텀 그룹명"].strip()
+                for _, row in edited_df.iterrows()
+                if str(row.get("커스텀 그룹명", "")).strip()
+            }
+            st.session_state.item_mapping = new_mapping
+            grp_count = len(set(new_mapping.values()))
+            st.success(f"✅ {len(new_mapping)}개 품목 → {grp_count}개 그룹으로 저장됨")
+            st.rerun()
+    with c2:
+        if st.button("🗑 전체 초기화", use_container_width=True):
+            st.session_state.item_mapping = {}
+            st.rerun()
 
-    return selected_items, groups
+    # ── 현재 그룹 요약 ───────────────────────────────────────────────────────
+    current_mapping = st.session_state.get("item_mapping", {})
+    if current_mapping:
+        from collections import Counter
+        grp_counts = Counter(v for v in current_mapping.values() if v)
+        badges = "  ".join(
+            f'<span style="display:inline-block;background:#1e40af;color:white;'
+            f'border-radius:12px;padding:2px 10px;font-size:0.75rem;margin:2px;">'
+            f'📦 {grp} ({cnt})</span>'
+            for grp, cnt in sorted(grp_counts.items())
+        )
+        st.markdown(
+            f'<div style="margin-top:6px;line-height:2;">{badges}</div>',
+            unsafe_allow_html=True,
+        )

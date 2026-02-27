@@ -183,31 +183,33 @@ st.markdown('<div class="section-header">📦 분석 대상 선택</div>', unsaf
 
 if has_custom:
     # ── 커스텀 그룹이 있는 경우 ──────────────────────────────────────────────
-    # 1차: 그룹 선택 → 분석 범위 확정
-    # 2차: 품목 세부 필터 (선택사항 — 비워두면 선택 그룹 전체가 분석 대상)
-    col_grp, col_item = st.columns([3, 2])
-    with col_grp:
-        selected_groups = st.multiselect(
-            "그룹 선택 (기본: 커스텀 그룹 전체)",
-            options=group_names,
-            default=custom_group_names,
-            key="ms_groups",
-            placeholder="그룹을 선택하세요",
-        )
-    # 선택된 그룹의 품목 전체 → 분석 1차 대상
-    items_in_groups = [
+    # session_state로 그룹 선택 유지 (모델 변경 시에도 초기화 안 됨)
+    if "selected_groups_persistent" not in st.session_state:
+        st.session_state.selected_groups_persistent = custom_group_names
+
+    # 유효하지 않은 그룹(삭제된 그룹) 정리
+    st.session_state.selected_groups_persistent = [
+        g for g in st.session_state.selected_groups_persistent if g in group_names
+    ]
+    # 새로 생긴 커스텀 그룹은 자동 추가
+    for g in custom_group_names:
+        if g not in st.session_state.selected_groups_persistent:
+            st.session_state.selected_groups_persistent.append(g)
+
+    selected_groups = st.multiselect(
+        "그룹 선택 (기본: 커스텀 그룹 전체)",
+        options=group_names,
+        default=st.session_state.selected_groups_persistent,
+        key="ms_groups",
+        placeholder="그룹을 선택하세요",
+    )
+    # 선택 결과를 session_state에 저장 → 모델 변경 후에도 유지
+    st.session_state.selected_groups_persistent = selected_groups
+
+    # 선택된 그룹의 품목 전체 = 분석 대상
+    selected_items = [
         item for gn in selected_groups for item in groups.get(gn, [])
     ]
-    with col_item:
-        exclude_items = st.multiselect(
-            "품목 제외 필터 (선택사항)",
-            options=items_in_groups,
-            default=[],
-            key="ms_exclude",
-            placeholder="제외할 품목만 선택",
-        )
-    # 제외 품목 빼고 최종 selected_items 확정
-    selected_items = [i for i in items_in_groups if i not in exclude_items]
 else:
     # ── 커스텀 그룹 없는 경우: 품목 직접 선택 ───────────────────────────────
     st.caption("💡 품목 그룹 설정을 완료하면 그룹 단위로 선택할 수 있습니다.")

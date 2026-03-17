@@ -285,6 +285,58 @@ else:
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-header">📋 커스텀 그룹별 차이 분석</div>', unsafe_allow_html=True)
 
+
+# ── 세부 품목 표 렌더 헬퍼 (합계 행 분리, 행 너비 통일) ─────────────────────────
+def _show_split_table(df_with_total: "pd.DataFrame", money_cols: list):
+    """
+    build_table()이 반환하는 DataFrame(마지막 행=합계)을
+    - 데이터 표 (정렬 가능)
+    - 합계 표 (고정, height=56px)
+    두 개로 나눠 렌더링. use_container_width=True로 너비 통일.
+    """
+    ROW_H = 36   # px per row (Streamlit 기본값)
+    HDR_H = 40   # header height
+
+    # 마지막 행이 합계인지 확인 후 분리
+    total_mask = df_with_total.apply(
+        lambda r: any("합 계" in str(v) for v in r.values), axis=1
+    )
+    data_df  = df_with_total[~total_mask].reset_index(drop=True)
+    total_df = df_with_total[total_mask].reset_index(drop=True)
+
+    # 데이터 표
+    data_h = min(520, max(HDR_H + ROW_H, len(data_df) * ROW_H + HDR_H))
+    st.dataframe(
+        styled_df(data_df, money_cols),
+        use_container_width=True,
+        hide_index=True,
+        height=data_h,
+    )
+
+    # 합계 표 (헤더 없음 효과: height = 딱 1행)
+    if not total_df.empty:
+        # 합계 행 스타일: 볼드 + 차이 컬럼 색상
+        def _total_style(df):
+            def color(v):
+                try:
+                    fv = float(v)
+                    if fv < 0: return "color:#c0392b;font-weight:700"
+                    if fv > 0: return "color:#1a7a4a;font-weight:700"
+                except: pass
+                return "font-weight:700"
+            fmt = {c: "{:,.0f}" for c in money_cols if c in df.columns}
+            styler = df.style.format(fmt, na_rep="-")
+            for c in df.columns:
+                styler = styler.applymap(color if c in money_cols else (lambda v: "font-weight:700"), subset=[c])
+            return styler
+
+        st.dataframe(
+            _total_style(total_df),
+            use_container_width=True,
+            hide_index=True,
+            height=HDR_H + ROW_H,   # 헤더 + 1행 = 76px
+        )
+
 # ── 그룹별 표 + 드롭다운 헬퍼 ───────────────────────────────────────────────
 def _render_group_section(grp_list, grp_map, color_map, va_src, va_detail_src, sel_key):
     """
@@ -426,8 +478,7 @@ def _render_group_section(grp_list, grp_map, color_map, va_src, va_detail_src, s
         dtbl, dmc = build_table(
             drp_vd if show_detail else drp_va,
             base_label, curr_label, show_detail)
-        st.dataframe(styled_df(dtbl, dmc), use_container_width=True,
-                     height=min(460, max(180, (len(dtbl)+1)*36+40)))
+        _show_split_table(dtbl, dmc)
 
 
 # ── va_disp_total 항상 정의 (다운로드용) ─────────────────────────────────────
@@ -446,8 +497,7 @@ if has_custom and selected_groups:
     _render_group_section(selected_groups, sel_grp_map, grp_colors,
                           va_filtered, va_detail_filtered, "drp_main")
 else:
-    st.dataframe(styled_df(va_disp_total, money_cols), use_container_width=True,
-                 height=min(520, max(260, (len(va_disp_total)+1)*36+40)))
+    _show_split_table(va_disp_total, money_cols)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 품목계정 분류별 차이 분석 (제품 / 상품 / 기타)
@@ -532,8 +582,7 @@ if "품목계정_분류" in df_all.columns:
                 sub_vd = va_detail_filtered[va_detail_filtered["품목명"].isin(tab_items)].copy()
                 tbl, mc = build_table(sub_vd if show_detail else sub_va,
                                       base_label, curr_label, show_detail)
-                st.dataframe(styled_df(tbl, mc), use_container_width=True,
-                             height=min(480, max(200, (len(tbl)+1)*36+40)))
+                _show_split_table(tbl, mc)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

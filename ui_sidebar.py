@@ -75,15 +75,27 @@ def render_sidebar():
 
             st.markdown("### 🔀 비교 기간")
             period_mode = st.radio("기준 기간 설정",
-                                   ["전년 동월 대비 (YoY)", "전월 대비 (MoM)"], index=0)
+                                   ["전년 동월 대비 (YoY)", "전월 대비 (MoM)", "전년 동기 누적 대비 (YTD)"],
+                                   index=0)
+
+            is_ytd = (period_mode == "전년 동기 누적 대비 (YTD)")
+
             if period_mode == "전년 동월 대비 (YoY)":
                 base_year, base_month = curr_year - 1, curr_month
-            else:
+            elif period_mode == "전월 대비 (MoM)":
                 base_year  = curr_year - 1 if curr_month == 1 else curr_year
                 base_month = 12            if curr_month == 1 else curr_month - 1
+            else:  # YTD
+                base_year, base_month = curr_year - 1, curr_month
 
-            base_label = f"{base_year}년 {MONTH_KR[base_month]}"
-            curr_label = f"{curr_year}년 {MONTH_KR[curr_month]}"
+            if is_ytd:
+                m_range = list(range(1, curr_month + 1))
+                base_label = f"{base_year}년 1~{MONTH_KR[curr_month]} 누적"
+                curr_label = f"{curr_year}년 1~{MONTH_KR[curr_month]} 누적"
+            else:
+                base_label = f"{base_year}년 {MONTH_KR[base_month]}"
+                curr_label = f"{curr_year}년 {MONTH_KR[curr_month]}"
+
             st.markdown(
                 f'<span class="period-badge badge-base">기준: {base_label}</span>'
                 f'<span class="period-badge badge-curr">실적: {curr_label}</span>',
@@ -104,13 +116,18 @@ def render_sidebar():
             st.caption("ℹ️ ①수량차이 + ②단가차이 + ③환율차이 = 총차이")
             st.caption("🆕 신규 품목은 당해 매출 전액을 수량차이로 귀속 (단가·환율차이=0)")
 
-            df_base = df_all[(df_all["연도"] == base_year) & (df_all["월"] == base_month)].copy()
-            df_curr = df_all[(df_all["연도"] == curr_year) & (df_all["월"] == curr_month)].copy()
+            if is_ytd:
+                df_base = df_all[(df_all["연도"] == base_year) & (df_all["월"].isin(m_range))].copy()
+                df_curr = df_all[(df_all["연도"] == curr_year) & (df_all["월"].isin(m_range))].copy()
+            else:
+                df_base = df_all[(df_all["연도"] == base_year) & (df_all["월"] == base_month)].copy()
+                df_curr = df_all[(df_all["연도"] == curr_year) & (df_all["월"] == curr_month)].copy()
 
         else:
             base_label = curr_label = period_mode = ""
             df_base = df_curr = None
             show_detail = False
+            is_ytd = False
             if "analysis_model" not in st.session_state:
                 st.session_state.analysis_model = "모델 A — 원인별 임팩트 분석"
             analysis_model = st.session_state.analysis_model
@@ -118,7 +135,7 @@ def render_sidebar():
     return dict(
         df_all=df_all, df_base=df_base, df_curr=df_curr,
         base_label=base_label, curr_label=curr_label, period_mode=period_mode,
-        analysis_model=analysis_model, show_detail=show_detail,
+        analysis_model=analysis_model, show_detail=show_detail, is_ytd=is_ytd,
     )
 
 

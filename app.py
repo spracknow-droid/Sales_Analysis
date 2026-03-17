@@ -394,103 +394,100 @@ if st.session_state.get("item_mapping") and len(selected_groups) > 0:
 # ══════════════════════════════════════════════════════════════════════════════
 # 품목계정 분류별 차이 분석 (제품 / 상품 / 기타)
 # ══════════════════════════════════════════════════════════════════════════════
-if "품목계정_분류" in df_all.columns:
-    st.markdown('<div class="section-header">🗂️ 품목계정 분류별 차이 분석</div>',
-                unsafe_allow_html=True)
-    st.caption("제품 / 상품 / 기타(원재료·부재료·제조-수선비) 기준 집계")
-
-    # 품목명 → 품목계정_분류 매핑 (df_all 기준)
+# ── 분류 기준 결정: 커스텀 그룹 있으면 그룹 기준, 없으면 품목계정 분류 기준 ──
+if has_custom and selected_groups:
+    _analysis_cats    = list(selected_groups)
+    _analysis_label   = "커스텀 그룹"
+    _cat_color_list   = [GROUP_COLORS[i % len(GROUP_COLORS)][0] for i in range(len(_analysis_cats))]
+    _cat_colors       = {cat: _cat_color_list[i] for i, cat in enumerate(_analysis_cats)}
+    def _get_items(cat):
+        return [i for i in groups.get(cat, []) if i in selected_items]
+elif "품목계정_분류" in df_all.columns:
+    _analysis_cats    = ["제품", "상품", "기타"]
+    _analysis_label   = "품목계정 분류"
+    _cat_colors       = {"제품": "#1e40af", "상품": "#065f46", "기타": "#7c3aed"}
     acct_map = (
         df_all[["품목명", "품목계정_분류"]]
         .drop_duplicates(subset=["품목명"])
         .set_index("품목명")["품목계정_분류"]
         .to_dict()
     )
-
-    ACCT_CATS   = ["제품", "상품", "기타"]
-    ACCT_COLORS = {"제품": "#1e40af", "상품": "#065f46", "기타": "#7c3aed"}
-
-    # va_filtered에 분류 컬럼 추가
     va_acct = va_filtered.copy()
     va_acct["품목계정_분류"] = va_acct["품목명"].map(acct_map).fillna("기타")
+    def _get_items(cat):
+        return va_acct[va_acct["품목계정_분류"] == cat]["품목명"].tolist()
+else:
+    _analysis_cats = []
+    _analysis_label = ""
+    _cat_colors = {}
+    def _get_items(cat): return []
 
-    # ── 분류별 KPI 요약 카드 ─────────────────────────────────────────────────
-    acct_cols = st.columns(len(ACCT_CATS))
-    for ci, cat in enumerate(ACCT_CATS):
-        sub = va_acct[va_acct["품목계정_분류"] == cat]
-        c_base = sub["매출0"].sum()
-        c_curr = sub["매출1"].sum()
-        c_diff = sub["총차이"].sum()
-        c_qty  = sub["수량차이"].sum()
-        c_prc  = sub["단가차이"].sum()
-        c_fx   = sub["환율차이"].sum()
-        clr    = ACCT_COLORS[cat]
-        d_sign = "▲ +" if c_diff >= 0 else "▼ "
-        d_clr  = "#16a34a" if c_diff >= 0 else "#dc2626"
-        acct_cols[ci].markdown(f"""
-        <div style="background:white;border:1px solid #e2e8f0;border-top:4px solid {clr};
-                    border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
-          <div style="font-size:0.82rem;font-weight:800;color:{clr};margin-bottom:8px;">
-            {cat}
-          </div>
-          <div style="font-size:0.75rem;color:#64748b;margin-bottom:2px;">기준 매출</div>
-          <div style="font-size:1.0rem;font-weight:700;color:#1e293b;margin-bottom:6px;">
-            {c_base:,.0f}원
-          </div>
-          <div style="font-size:0.75rem;color:#64748b;margin-bottom:2px;">실적 매출</div>
-          <div style="font-size:1.0rem;font-weight:700;color:#1e293b;margin-bottom:6px;">
-            {c_curr:,.0f}원
-          </div>
-          <div style="font-size:0.75rem;color:#64748b;margin-bottom:2px;">총 차이</div>
-          <div style="font-size:1.1rem;font-weight:900;color:{d_clr};">
-            {d_sign}{c_diff:,.0f}원
-          </div>
-          <div style="font-size:0.7rem;color:#94a3b8;margin-top:5px;">
-            ① {c_qty:+,.0f} &nbsp; ② {c_prc:+,.0f} &nbsp; ③ {c_fx:+,.0f}
-          </div>
-        </div>""", unsafe_allow_html=True)
+if _analysis_cats:
+    st.markdown(f'<div class="section-header">🗂️ {_analysis_label}별 차이 분석</div>',
+                unsafe_allow_html=True)
+
+    # ── KPI 요약 카드 ─────────────────────────────────────────────────────────
+    n_cols = min(len(_analysis_cats), 4)
+    kpi_rows = [_analysis_cats[i:i+n_cols] for i in range(0, len(_analysis_cats), n_cols)]
+    for row_cats in kpi_rows:
+        row_cols = st.columns(len(row_cats))
+        for ci, cat in enumerate(row_cats):
+            cat_items = _get_items(cat)
+            sub = va_filtered[va_filtered["품목명"].isin(cat_items)]
+            c_base = sub["매출0"].sum()
+            c_curr = sub["매출1"].sum()
+            c_diff = sub["총차이"].sum()
+            c_qty  = sub["수량차이"].sum()
+            c_prc  = sub["단가차이"].sum()
+            c_fx   = sub["환율차이"].sum()
+            clr    = _cat_colors.get(cat, "#1e40af")
+            d_sign = "▲ +" if c_diff >= 0 else "▼ "
+            d_clr  = "#16a34a" if c_diff >= 0 else "#dc2626"
+            row_cols[ci].markdown(f"""
+            <div style="background:white;border:1px solid #e2e8f0;border-top:4px solid {clr};
+                        border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+              <div style="font-size:0.82rem;font-weight:800;color:{clr};margin-bottom:8px;">{cat}</div>
+              <div style="font-size:0.75rem;color:#64748b;margin-bottom:2px;">기준 매출</div>
+              <div style="font-size:1.0rem;font-weight:700;color:#1e293b;margin-bottom:6px;">{c_base:,.0f}원</div>
+              <div style="font-size:0.75rem;color:#64748b;margin-bottom:2px;">실적 매출</div>
+              <div style="font-size:1.0rem;font-weight:700;color:#1e293b;margin-bottom:6px;">{c_curr:,.0f}원</div>
+              <div style="font-size:0.75rem;color:#64748b;margin-bottom:2px;">총 차이</div>
+              <div style="font-size:1.1rem;font-weight:900;color:{d_clr};">{d_sign}{c_diff:,.0f}원</div>
+              <div style="font-size:0.7rem;color:#94a3b8;margin-top:5px;">
+                ① {c_qty:+,.0f} &nbsp; ② {c_prc:+,.0f} &nbsp; ③ {c_fx:+,.0f}
+              </div>
+            </div>""", unsafe_allow_html=True)
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # ── 분류별 + 커스텀 그룹별 상세 테이블 탭 ──────────────────────────────────
-    # 탭 구성: 전체 | 제품 | 상품 | 기타 | [커스텀 그룹1] | [커스텀 그룹2] ...
-    custom_grp_names = list(custom_groups.keys()) if has_custom else []
-    all_tab_labels = ["전체"] + ACCT_CATS + custom_grp_names
-    acct_tabs = st.tabs(all_tab_labels)
-
-    for ti, tab_label in enumerate(all_tab_labels):
-        with acct_tabs[ti]:
+    # ── 상세 테이블 탭 (전체 + 각 분류/그룹) ──────────────────────────────────
+    tab_labels = ["전체"] + _analysis_cats
+    detail_tabs = st.tabs(tab_labels)
+    for ti, tab_label in enumerate(tab_labels):
+        with detail_tabs[ti]:
             if tab_label == "전체":
                 sub_va = va_filtered.copy()
                 sub_vd = va_detail_filtered.copy()
-            elif tab_label in ACCT_CATS:
-                cat_items = va_acct[va_acct["품목계정_분류"] == tab_label]["품목명"].tolist()
-                sub_va    = va_filtered[va_filtered["품목명"].isin(cat_items)].copy()
-                sub_vd    = va_detail_filtered[va_detail_filtered["품목명"].isin(cat_items)].copy()
             else:
-                # 커스텀 그룹 탭
-                grp_items = [i for i in groups.get(tab_label, []) if i in selected_items]
-                sub_va    = va_filtered[va_filtered["품목명"].isin(grp_items)].copy()
-                sub_vd    = va_detail_filtered[va_detail_filtered["품목명"].isin(grp_items)].copy()
-                # 그룹 색상 배너
-                gi = list(groups.keys()).index(tab_label) if tab_label in groups else 0
-                clr = GROUP_COLORS[gi % len(GROUP_COLORS)][0]
-                if not sub_va.empty:
+                cat_items = _get_items(tab_label)
+                sub_va = va_filtered[va_filtered["품목명"].isin(cat_items)].copy()
+                sub_vd = va_detail_filtered[va_detail_filtered["품목명"].isin(cat_items)].copy()
+                # 그룹 색상 배너 (커스텀 그룹인 경우)
+                if has_custom and tab_label in groups and not sub_va.empty:
+                    clr = _cat_colors.get(tab_label, "#1e40af")
                     g_b = sub_va["매출0"].sum(); g_c = sub_va["매출1"].sum()
                     g_d = sub_va["총차이"].sum()
-                    d_sign = "▲ +" if g_d >= 0 else "▼ "
+                    d_s = "▲ +" if g_d >= 0 else "▼ "
                     st.markdown(
                         f'<div style="background:{clr};border-radius:7px;padding:6px 14px;'
                         f'color:white;font-size:0.82rem;font-weight:700;margin-bottom:8px;">'
                         f'📦 {tab_label} &nbsp;│&nbsp; 기준 {g_b:,.0f}원 → 실적 {g_c:,.0f}원'
-                        f'&nbsp;│&nbsp; 총차이 {d_sign}{g_d:,.0f}원</div>',
+                        f' &nbsp;│&nbsp; 총차이 {d_s}{g_d:,.0f}원</div>',
                         unsafe_allow_html=True,
                     )
-
             if sub_va.empty:
-                st.info(f"{tab_label} 분류의 데이터가 없습니다.")
+                st.info(f"{tab_label}의 데이터가 없습니다.")
                 continue
-
             tbl, mc = build_table(
                 sub_vd if show_detail else sub_va,
                 base_label, curr_label, show_detail

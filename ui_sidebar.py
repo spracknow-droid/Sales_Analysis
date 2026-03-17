@@ -7,8 +7,26 @@ if _HERE not in _sys.path:
     _sys.path.insert(0, _HERE)
 
 import streamlit as st
+import pandas as pd
+from io import BytesIO
 from data_loader import load_excel
 from config import MONTH_KR
+
+
+
+def _parse_group_excel(data: bytes) -> dict:
+    """그룹 설정 엑셀(품목명, 커스텀 그룹명) → {품목명: 그룹명} dict."""
+    try:
+        df = pd.read_excel(BytesIO(data), dtype=str).fillna("")
+        if "품목명" not in df.columns or "커스텀 그룹명" not in df.columns:
+            return {}
+        return {
+            str(row["품목명"]).strip(): str(row["커스텀 그룹명"]).strip()
+            for _, row in df.iterrows()
+            if str(row["품목명"]).strip() and str(row["커스텀 그룹명"]).strip()
+        }
+    except Exception:
+        return {}
 
 
 def render_sidebar():
@@ -17,6 +35,25 @@ def render_sidebar():
     with st.sidebar:
         st.markdown("## 📂 파일 업로드")
         uploaded = st.file_uploader("ERP 매출실적 (.xlsx / .xls)", type=["xlsx", "xls"])
+
+        st.markdown("---")
+        st.markdown("### 📋 품목 그룹 설정 불러오기")
+        grp_uploaded = st.file_uploader(
+            "그룹 설정 엑셀 업로드 (.xlsx)",
+            type=["xlsx"],
+            key="sidebar_group_upload",
+        )
+        if grp_uploaded:
+            mapping = _parse_group_excel(grp_uploaded.read())
+            if mapping:
+                st.session_state.item_mapping = mapping
+                st.session_state.pop("group_editor_table", None)
+                st.session_state.pop("ms_groups", None)
+                st.session_state.pop("known_custom_groups", None)
+                st.success(f"{len(mapping)}개 품목 그룹 불러오기 완료")
+                st.rerun()
+            else:
+                st.error("형식 오류 (품목명·커스텀 그룹명 열 필요)")
         st.markdown("---")
 
         if uploaded:

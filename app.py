@@ -349,12 +349,10 @@ def _render_group_section(grp_list, grp_map, color_map, va_src, va_detail_src, s
     if sort_col and sort_col in tbl_df_data.columns:
         tbl_df_data = tbl_df_data.sort_values(sort_col, ascending=sort_asc)
 
-    # 합계 행을 맨 아래 추가
-    tbl_df = pd.concat(
-        [tbl_df_data, pd.DataFrame([total_row])], ignore_index=True
-    ).drop(columns=["_is_total"])
+    # 데이터 행만 포함한 표 (정렬 가능)
+    tbl_df = tbl_df_data.drop(columns=["_is_total"])
 
-    def _style_grp_tbl(df):
+    def _style_data(df):
         def color(v):
             try:
                 fv = float(v)
@@ -368,18 +366,43 @@ def _render_group_section(grp_list, grp_map, color_map, va_src, va_detail_src, s
         for c in diff_cols:
             if c in df.columns:
                 styler = styler.applymap(color, subset=[c])
-        def row_hi(row):
-            # 합계 행: 다른 행과 동일한 배경 + 볼드만 적용
-            if "합 계" in str(row.get("그룹", "")):
-                return ["font-weight:700;border-top:1.5px solid #94a3b8"] * len(row)
-            return [""] * len(row)
-        return styler.apply(row_hi, axis=1)
+        return styler
 
     st.dataframe(
-        _style_grp_tbl(tbl_df),
+        _style_data(tbl_df),
         use_container_width=True,
         hide_index=True,
-        height=min(500, max(120, (len(tbl_df)+1)*36+40)),
+        height=min(460, max(80, len(tbl_df)*36+40)),
+    )
+
+    # 합계 행 — 별도 고정 테이블 (정렬 영향 없음)
+    total_df = pd.DataFrame([{
+        k: v for k, v in total_row.items() if k != "_is_total"
+    }])
+
+    def _style_total(df):
+        def color(v):
+            try:
+                fv = float(v)
+                if fv < 0: return "color:#c0392b;font-weight:700"
+                if fv > 0: return "color:#1a7a4a;font-weight:700"
+            except: pass
+            return "font-weight:700"
+        diff_cols = ["총차이(원)", "①수량차이", "②단가차이", "③환율차이"]
+        fmt = {c: "{:,.0f}" for c in money_c}
+        styler = df.style.format(fmt, na_rep="-")
+        for c in df.columns:
+            styler = styler.applymap(
+                (lambda v: color(v)) if c in diff_cols else (lambda v: "font-weight:700"),
+                subset=[c]
+            )
+        return styler
+
+    st.dataframe(
+        _style_total(total_df),
+        use_container_width=True,
+        hide_index=True,
+        height=70,
     )
 
     # ③ 선택된 그룹의 품목별 상세

@@ -289,20 +289,32 @@ st.markdown('<div class="section-header">📋 커스텀 그룹별 차이 분석<
 # ── 세부 품목 표 렌더 헬퍼 (합계 행 분리, 행 너비 통일) ─────────────────────────
 def _show_split_table(df_with_total: "pd.DataFrame", money_cols: list):
     """
-    build_table()이 반환하는 DataFrame(마지막 행=합계)을
-    - 데이터 표 (정렬 가능)
-    - 합계 표 (고정, height=56px)
-    두 개로 나눠 렌더링. use_container_width=True로 너비 통일.
+    build_table() 반환값을 데이터 표 + 합계 표로 분리 렌더링.
+    column_config로 동일한 컬럼 너비를 두 표에 모두 적용해 정렬 통일.
     """
-    ROW_H = 36   # px per row (Streamlit 기본값)
-    HDR_H = 40   # header height
+    ROW_H = 36
+    HDR_H = 40
 
-    # 마지막 행이 합계인지 확인 후 분리
     total_mask = df_with_total.apply(
         lambda r: any("합 계" in str(v) for v in r.values), axis=1
     )
     data_df  = df_with_total[~total_mask].reset_index(drop=True)
     total_df = df_with_total[total_mask].reset_index(drop=True)
+
+    # ── 공통 column_config 생성 ───────────────────────────────────────────────
+    # 품목명/그룹 등 텍스트 열은 너비 고정, 숫자 열은 동일 width
+    def _make_col_config(df):
+        cfg = {}
+        for col in df.columns:
+            if col in money_cols:
+                cfg[col] = st.column_config.NumberColumn(col, format="%,.0f", width="medium")
+            elif col in ("품목명", "그룹", "환종"):
+                cfg[col] = st.column_config.TextColumn(col, width="large")
+            else:
+                cfg[col] = st.column_config.TextColumn(col, width="small")
+        return cfg
+
+    col_cfg = _make_col_config(data_df)
 
     # 데이터 표
     data_h = min(520, max(HDR_H + ROW_H, len(data_df) * ROW_H + HDR_H))
@@ -311,11 +323,11 @@ def _show_split_table(df_with_total: "pd.DataFrame", money_cols: list):
         use_container_width=True,
         hide_index=True,
         height=data_h,
+        column_config=col_cfg,
     )
 
-    # 합계 표 (헤더 없음 효과: height = 딱 1행)
+    # 합계 표 — 동일한 column_config 적용으로 열 너비 통일
     if not total_df.empty:
-        # 합계 행 스타일: 볼드 + 차이 컬럼 색상
         def _total_style(df):
             def color(v):
                 try:
@@ -327,14 +339,16 @@ def _show_split_table(df_with_total: "pd.DataFrame", money_cols: list):
             fmt = {c: "{:,.0f}" for c in money_cols if c in df.columns}
             styler = df.style.format(fmt, na_rep="-")
             for c in df.columns:
-                styler = styler.applymap(color if c in money_cols else (lambda v: "font-weight:700"), subset=[c])
+                fn = color if c in money_cols else (lambda v: "font-weight:700")
+                styler = styler.applymap(fn, subset=[c])
             return styler
 
         st.dataframe(
             _total_style(total_df),
             use_container_width=True,
             hide_index=True,
-            height=HDR_H + ROW_H,   # 헤더 + 1행 = 76px
+            height=HDR_H + ROW_H,
+            column_config=col_cfg,
         )
 
 # ── 그룹별 표 + 드롭다운 헬퍼 ───────────────────────────────────────────────
